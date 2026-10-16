@@ -58,6 +58,7 @@ const distributorNav = [['/distributor/subscription','file','Plan & access statu
 const customerNav = [['/customer/sia','spark','SIA Purchase Assistant'],['/customer/dashboard','grid','Customer dashboard'],['/customer/enquiries','file','My enquiries'],['/customer/quotations','file','My quotations'],['/customer/compare','compare','Compare quotations'],['/customer/orders','box','My orders'],['/customer/invoices','file','My invoices'],['/customer/service','help','Service requests'],['/customer/installation','tool','Installation progress'],['/customer/settings','settings','Profile & settings']];
 let currentPath = '/';
 function brand(distributor=false) {
+  if(!distributor)return PublicHeader.logo();
   const live=distributor&&!Account.isDemo()&&Account.activeCompany;
   const logoUrl=live?live.brand?.logo_url:distributor?theme.logo:'';
   return `<span class="brand-mark">${logoUrl?`<img class="tenant-logo" src="${escapeHTML(logoUrl)}" alt="" referrerpolicy="no-referrer"><span class="logo-fallback">${icon('sun')}</span>`:icon('sun')}</span><span class="brand-text">${distributor ? escapeHTML(live?(live.brand?.public_name||live.name):theme.name) : 'MY SOLAR'}<small>${distributor ? 'BUSINESS WORKSPACE' : 'A BRIGHTER EVERYDAY'}</small></span>`;
@@ -66,11 +67,7 @@ function avatar(size='') { return SIA.avatar(size); }
 function status(label, tone='neutral') { return `<span class="status ${tone}">${label}</span>`; }
 function heading(eyebrow,title,description,action='') { return `<div class="page-heading"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p class="muted">${description}</p></div>${action}</div>`; }
 function demoNotice() { return `<div class="demo-notice">${icon('leaf')}<span><strong>A little look at what’s ahead.</strong> Phase 1 preview · All names and records are fictional. Business actions are inactive.</span>${link('/states','View UI states')}</div>`; }
-function publicHeader() {
-  if(currentPath==='/')return Landing.header();
-  const platform=(Account.session.platformPermissions||[]).includes('platform.companies.read');
-  return `<header class="public-header"><div class="header-inner">${link('/',brand(),'brand')}<nav class="public-nav" aria-label="Main navigation">${link('/products',t('Product categories'),currentPath.startsWith('/products')?'active':'')}${link('/vendors',t('Find a distributor'),currentPath.startsWith('/vendors')?'active':'')}${link('/distributor','For your business',currentPath==='/distributor'?'active':'')}</nav><div class="header-actions">${platform?link('/platform',t('Platform administration'),'text-link platform-entry'):''}${languageSelect()}${link('/customer/dashboard','My account '+icon('arrow'),'btn small secondary')}${button(icon(mobileOpen?'close':'menu'),'menu','icon-button mobile-toggle')}</div></div>${mobileOpen ? `<nav class="mobile-public" aria-label="Mobile navigation">${link('/products',t('Product categories'))}${link('/vendors',t('Find a distributor'))}${link('/distributor','For your business')}${platform?link('/platform',t('Platform administration')):''}</nav>`:''}</header>`;
-}
+function publicHeader() { return PublicHeader.markup(); }
 function languageSelect() { return `<label class="language"><span class="sr-only">Interface language</span><select id="language" aria-label="Interface language"><option value="en" ${locale==='en'?'selected':''}>EN · English</option><option value="ml" ${locale==='ml'?'selected':''}>മലയാളം</option><option value="ta" ${locale==='ta'?'selected':''}>தமிழ்</option></select></label>`; }
 function sidebar(channel) {
   const setupNav=!Account.isDemo()&&channel==='distributor'?[['/distributor/catalogue','sun','Energy catalogue'],['/distributor/offers','box','My offers'],['/distributor/service-areas','pin','Service areas'],['/distributor/setup','file','Company setup'],['/distributor/branding','sun','Brand identity'],['/distributor/team','users','Team']]:[];
@@ -130,6 +127,7 @@ function applyTheme() {
   document.documentElement.style.setProperty('--ink',safe(live?.secondary_color,'#292b29'));
 }
 function render(focus=false) {
+  PublicHeader.cleanup();
   Landing.cleanup();
   currentPath=(location.hash.slice(1)||'/').split('?')[0];if(window.Experience)Experience.prepareRoute(currentPath);const channel=Account.channel(currentPath,routes[currentPath]?.[0]||'public');applyTheme();document.documentElement.lang=locale;document.title=currentPath==='/'?'MY SOLAR · Powering every possibility, together':`${routes[currentPath]?.[1]||'Page not found'} · MY SOLAR`;
   document.body.classList.toggle('lp-active',currentPath==='/');
@@ -145,6 +143,7 @@ function render(focus=false) {
   if(window.Experience)Experience.decorate(channel);
   if(window.SIA)SIA.decorate();
   if(window.Commercial)Commercial.decorate();
+  PublicHeader.mount();
   Landing.mount();
   if(focus)document.getElementById('main').focus({preventScroll:true});
 }

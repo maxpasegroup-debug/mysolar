@@ -1,0 +1,30 @@
+[
+  {
+    "file": "server/db/migrations/001_identity.sql",
+    "sha256": "97da0abf7668f9ff0a8df71d10c9bdabdd48f2532a89f9c05a4a467a351e6d7a"
+  },
+  {
+    "file": "server/db/migrations/003_company_setup.sql",
+    "sha256": "6e6ffaa6d4d16fa69ccbb7a1aa09c76945cfae3dbd966c7784799614c619fcb0"
+  },
+  {
+    "file": "server/db/migrations/004_marketplace.sql",
+    "sha256": "8c3f185de1711a352e3e07c0d9d241645b8bedaf6381bc8799f270b74f78f419"
+  },
+  {
+    "file": "server/db/migrations/005_enquiries_quotations.sql",
+    "sha256": "31af8c35f6012a4eb6ff56b5414a3dd56573da65bc715bd0da09c160c59aaefa"
+  },
+  {
+    "file": "server/db/migrations/006_operations.sql",
+    "sha256": "50fc05885c4cdc3b2636c1bdf2ab87ab4cc5ca3e917cde68c292e243252827b1"
+  },
+  {
+    "file": "server/db/migrations/007_sia.sql",
+    "sha256": "37d5da35855ad3d3b8744692fec48ac50c6a2c089408771985a82aff3a1e3590"
+  },
+  {
+    "file": "server/db/migrations/008_commercial.sql",
+    "sha256": "3d50ba531ef82d23a2198c13c74dd19556b2a57b1eb7ebd3cac8d8a79c39dce7"
+  }
+]

@@ -1,4 +1,12 @@
-# MY SOLAR — Phase 9
+# MY SOLAR — Phase 10 verification
+
+Phase 10 adds dependency-free verification scripts, unit/HTTP/browser regressions, an isolated PostgreSQL integration suite, safe configuration fixes, reusable checksum-preserving migration execution, and `/healthz` / `/readyz` endpoints. See [PHASE_10_HANDOFF.md](PHASE_10_HANDOFF.md) for observed results and release blockers, and [RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md) for environment, backup/migration/rollback and domain procedures. These current documents supersede the earlier-phase status statements retained below.
+
+Run `npm test` for automated regressions, `npm run check` (also `lint`/`build`) for Node syntax/import/asset/lock validation, and `npm run test:browser` with an installed Chromium browser. There is no bundler or third-party style linter; the build is the equivalent validation of this plain frontend/backend. The browser script starts its own loopback test server with an isolated profile and no configured database or external AI/email provider. It does not exercise authenticated database workflows.
+
+For database verification, securely configure a dedicated loopback `TEST_DATABASE_URL` with a database name starting `mysolar_test_`, then run `npm run test:db`. It never falls back to `DATABASE_URL`, never loads `.env`, and uses generated schemas in that designated disposable database. Without configuration the database suite explicitly skips as blocked. Do not point test scripts at production. Local evidence is not production acceptance; billing, deployment and domain connection remain inactive.
+
+## Phase 9 implementation history
 
 Phase 9 adds versioned commercial configuration, one-time setup-fee proposals, draft/active/inactive plans, manual company subscription agreements, trials and lifecycle history, centralized backend entitlements and usage caps. Operators use `/#/platform/commercial`, `/#/platform/plans` and `/#/platform/subscriptions`; owners use `/#/distributor/subscription`. Billing remains disabled. No checkout, payment request, provider transaction or verified-payment record is created.
 

@@ -1,7 +1,8 @@
 import express from 'express';
 import helmet from 'helmet';
 import { randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath,pathToFileURL } from 'node:url';
+import { migrationManifest } from './db/migrations.js';
 import { config } from './config.js';
 import { pool } from './db/pool.js';
 import { HttpError, errorHandler } from './errors.js';
@@ -30,7 +31,7 @@ import { notificationRoutes } from './operations/notifications.js';
 import { customerExperience } from './customer/experience.js';
 import { siaRoutes } from './sia/routes.js';
 import { commercial,ownerCommercial } from './commercial/routes.js';
-const app=express();
+export const app=express();
 app.disable('x-powered-by');
 app.set('trust proxy',config.proxyHops);
 app.use(helmet({
@@ -42,6 +43,9 @@ app.use(helmet({
   }},referrerPolicy:{policy:'no-referrer'}
 }));
 app.use((req,res,next)=>{req.requestId=randomUUID();res.set('X-Request-ID',req.requestId);next();});
+app.get('/healthz',(req,res)=>{res.set('Cache-Control','no-store').json({status:'ok'});});
+let readiness;
+app.get('/readyz',async(req,res)=>{res.set('Cache-Control','no-store');try{readiness??=(async()=>{const expected=await migrationManifest(),result=await pool.query({text:'SELECT name,checksum FROM schema_migrations WHERE name=ANY($1::text[])',values:[expected.map(x=>x.name)],query_timeout:1500});return expected.every(x=>result.rows.some(r=>r.name===x.name&&r.checksum===x.checksum));})().finally(()=>{readiness=null;});const ready=await readiness;res.status(ready?200:503).json({status:ready?'ready':'unavailable'});}catch{res.status(503).json({status:'unavailable'});}});
 app.use('/api',async(req,res,next)=>{
   res.set('Cache-Control','no-store');
   if(req.get('sec-fetch-site')==='cross-site')throw new HttpError(403,'ORIGIN_REJECTED','Use the application from its configured address.');
@@ -79,8 +83,12 @@ for(const asset of ['index.html','styles.css','accounts.css','organization.css',
 app.get('/',(req,res)=>{res.set('Cache-Control','no-cache');res.sendFile(fileURLToPath(new URL('index.html',root)));});
 app.use((req,res)=>res.status(404).type('text').send('Page not found.'));
 app.use(errorHandler);
+export function startServer(){
 const server=app.listen(config.port,'0.0.0.0',()=>console.log(`MY SOLAR listening on port ${config.port}`));
 server.requestTimeout=30000;
 server.headersTimeout=15000;
 async function shutdown() {server.close(async()=>{await pool.end();process.exit(0);});setTimeout(()=>process.exit(1),10000).unref();}
 process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);
+return server;
+}
+if(process.argv[1]&&pathToFileURL(process.argv[1]).href===import.meta.url)startServer();

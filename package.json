@@ -7,6 +7,12 @@
     "node": ">=22.14.0"
   },
   "scripts": {
+    "check": "node scripts/check.mjs",
+    "lint": "node scripts/check.mjs",
+    "build": "node scripts/check.mjs",
+    "test": "node --test",
+    "test:db": "node --test tests/database.test.mjs",
+    "test:browser": "node scripts/browser-check.mjs",
     "start": "node --env-file-if-exists=.env server/index.js",
     "dev": "node --env-file-if-exists=.env --watch server/index.js",
     "db:migrate": "node --env-file-if-exists=.env server/db/migrate.js",

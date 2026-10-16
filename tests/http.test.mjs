@@ -1,0 +1,15 @@
+import test,{after,before} from 'node:test';
+import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import { unitEnvironment } from './helpers/env.mjs';
+unitEnvironment();
+const {app}=await import('../server/index.js'),{pool}=await import('../server/db/pool.js');
+let server,base;
+before(async()=>{server=app.listen(0,'127.0.0.1');await once(server,'listening');base='http://127.0.0.1:'+server.address().port;});
+after(async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));await pool.end();});
+test('HTTP: liveness is available without database and contains no private state',async()=>{const r=await fetch(base+'/healthz');assert.equal(r.status,200);assert.deepEqual(await r.json(),{status:'ok'});assert.equal(r.headers.get('cache-control'),'no-store');});
+test('HTTP: readiness reports unavailable when isolated database port is closed',async()=>{const r=await fetch(base+'/readyz');assert.equal(r.status,503);assert.deepEqual(await r.json(),{status:'unavailable'});});
+test('HTTP: frontend, manifest and worker serve with intended security metadata',async()=>{for(const path of ['/','/src/app.js','/manifest.webmanifest','/assets/app-192.png','/sw.js']){const r=await fetch(base+path);assert.equal(r.status,200,path);assert.ok(r.headers.get('content-security-policy'));assert.equal(r.headers.get('x-powered-by'),null);assert.equal(r.headers.get('referrer-policy'),'no-referrer');}const r=await fetch(base+'/sw.js');assert.equal(r.headers.get('service-worker-allowed'),'/');});
+test('HTTP: secrets, server source, migrations and traversal are never static assets',async()=>{for(const path of ['/.env','/package.json','/server/config.js','/server/db/migrations/001_identity.sql','/.git/config','/assets/../../server/index.js'])assert.equal((await fetch(base+path)).status,404,path);});
+test('HTTP: cross-site request is rejected before database access',async()=>{const r=await fetch(base+'/api/auth/session',{headers:{'Sec-Fetch-Site':'cross-site'}});assert.equal(r.status,403);const data=await r.json();assert.equal(data.error.code,'ORIGIN_REJECTED');assert.equal(r.headers.get('cache-control'),'no-store');});
+test('HTTP: unavailable database errors do not expose queries or connection values',async()=>{const r=await fetch(base+'/api/public/categories');assert.equal(r.status,500);const data=await r.json();assert.equal(data.error.code,'SERVER_ERROR');assert.doesNotMatch(JSON.stringify(data),/postgresql|unit:unit|SELECT|password_hash/i);});

@@ -4,12 +4,15 @@ function integer(name, fallback, min, max) {
   return value;
 }
 const production = process.env.NODE_ENV === 'production';
-const origin = new URL(process.env.APP_ORIGIN || 'http://localhost:3000');
+let origin;try{origin=new URL(process.env.APP_ORIGIN||'http://localhost:3000');}catch{throw new Error('APP_ORIGIN must be a valid HTTP(S) origin');}
 if (origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash || !['http:', 'https:'].includes(origin.protocol)) throw new Error('APP_ORIGIN must be an HTTP(S) origin');
 if (production && origin.protocol !== 'https:') throw new Error('Production requires HTTPS APP_ORIGIN');
 const secret = process.env.SESSION_SECRET || '';
 if (secret.length < 64 || /replace|placeholder|example/i.test(secret)) throw new Error('Set a random SESSION_SECRET of at least 64 characters');
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
+let database;try{database=new URL(process.env.DATABASE_URL);decodeURIComponent(database.username);decodeURIComponent(database.password);}catch{throw new Error('DATABASE_URL must be a valid PostgreSQL URL');}
+if(!['postgres:','postgresql:'].includes(database.protocol)||!database.hostname||database.pathname.length<2||database.hash)throw new Error('DATABASE_URL must identify a PostgreSQL host and database');
+if([...database.searchParams.keys()].some(key=>/^ssl/i.test(key)))throw new Error('Configure database TLS with DATABASE_SSL; remove SSL options from DATABASE_URL to prevent policy overrides');
 if (!['disable', 'require'].includes(process.env.DATABASE_SSL || 'disable')) throw new Error('DATABASE_SSL must be disable or require');
 const logoHosts=(process.env.LOGO_ALLOWED_HOSTS||'').split(',').map(value=>value.trim().toLowerCase()).filter(Boolean);
 const productImageHosts=(process.env.PRODUCT_IMAGE_ALLOWED_HOSTS||'').split(',').map(value=>value.trim().toLowerCase()).filter(Boolean);

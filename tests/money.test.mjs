@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { decimal,calculate } from '../server/purchase/money.js';
+const item=(overrides={})=>({quantity:'1',unitPrice:'100.00',discount:'0',taxRate:'18',...overrides});
+const charges=taxMode=>({taxMode,delivery:'0',installation:'0',chargesTaxRate:['unknown','exempt'].includes(taxMode)?'':'0'});
+test('money: exact decimal parsing beyond binary float precision',()=>{assert.equal(decimal('0.29',2,'amount'),29n);assert.equal(decimal('999999999.99',2,'amount'),99999999999n);});
+test('money: negative, exponent, number, NaN and excessive scale are rejected',()=>{for(const input of ['-1','1e2','NaN','Infinity','0.001',0.1])assert.throws(()=>decimal(input,2,'amount'));});
+test('money: exclusive tax is calculated server-side in integer paise',()=>{const r=calculate([item()],charges('exclusive'));assert.equal(r.totalPaise,'11800');assert.equal(r.totals.net,'10000');assert.equal(r.totals.tax,'1800');});
+test('money: inclusive tax splits the exact stored total',()=>{const r=calculate([item({unitPrice:'118'})],charges('inclusive'));assert.equal(r.totalPaise,'11800');assert.equal(r.totals.net,'10000');assert.equal(r.totals.tax,'1800');});
+test('money: half-paise quantity rounds half up per line',()=>{assert.equal(calculate([item({quantity:'0.500',unitPrice:'0.01',taxRate:''})],charges('exempt')).totalPaise,'1');});
+test('money: discount, delivery and installation all contribute accurately',()=>{const r=calculate([item({quantity:'2',discount:'10'})],{taxMode:'exclusive',delivery:'5',installation:'5',chargesTaxRate:'18'});assert.equal(r.totalPaise,'23600');});
+test('money: unknown tax remains explicitly unconfirmed',()=>{const r=calculate([item({taxRate:''})],charges('unknown'));assert.equal(r.totalPaise,'10000');assert.equal(r.totals.taxConfirmed,false);});
+test('money: zero quantity and excessive discount are rejected',()=>{assert.throws(()=>calculate([item({quantity:'0'})],charges('exclusive')));assert.throws(()=>calculate([item({discount:'101'})],charges('exclusive')));});
+test('money: unknown/exempt reject an invented rate and rates above 100%',()=>{assert.throws(()=>calculate([item()],charges('unknown')));assert.throws(()=>calculate([item({taxRate:'100.01'})],charges('exclusive')));});
+test('money: maximum aggregate is enforced',()=>{assert.throws(()=>calculate([item({unitPrice:'999999999.99',taxRate:'18'})],charges('exclusive')));});

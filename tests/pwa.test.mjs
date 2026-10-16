@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import { readFile } from 'node:fs/promises';
+const source=await readFile(new URL('../sw.js',import.meta.url),'utf8');
+function worker(network=async()=>new Response('static')){const listeners={},stored=new Map(),deleted=[],cache={addAll:async urls=>{for(const u of urls)stored.set(u,new Response(u));},put:async(k,v)=>stored.set(k,v),match:async k=>stored.get(k)},context={URL,Response,Set,self:{location:{origin:'https://app.test.invalid'},addEventListener:(name,fn)=>listeners[name]=fn,clients:{claim:async()=>{}}},fetch:network,caches:{open:async()=>cache,match:async key=>stored.get(key),keys:async()=>['unrelated-cache','mysolar-static-obsolete'],delete:async key=>deleted.push(key)}};vm.runInNewContext(source,context);return {listeners,stored,deleted};}
+async function fetchEvent(w,path,{method='GET',mode='cors'}={}){let response=null;w.listeners.fetch({request:{url:'https://app.test.invalid'+path,method,mode},respondWith:p=>response=p});return response?await response:null;}
+test('PWA: private APIs, writes, query strings and unknown documents bypass worker',async()=>{const w=worker();for(const path of ['/api/auth/session','/api/customer/quotations','/private/invoice.pdf','/styles.css?private=1'])assert.equal(await fetchEvent(w,path),null);assert.equal(await fetchEvent(w,'/styles.css',{method:'POST'}),null);});
+test('PWA: installation caches only public offline resources',async()=>{const w=worker();let task;w.listeners.install({waitUntil:p=>task=p});await task;assert.deepEqual([...w.stored.keys()],['/offline.html','/offline.css','/assets/app-mark.svg']);});
+test('PWA: offline navigation returns fallback and never stores app navigation',async()=>{const w=worker(async()=>{throw new Error('offline');});w.stored.set('/offline.html',new Response('Offline fallback'));const response=await fetchEvent(w,'/',{mode:'navigate'});assert.equal(await response.text(),'Offline fallback');assert.equal(w.stored.has('/'),false);});
+test('PWA: activation deletes only this application cache prefix',async()=>{const w=worker();let task;w.listeners.activate({waitUntil:p=>task=p});await task;assert.deepEqual(w.deleted,['mysolar-static-obsolete']);});
+test('PWA: offline without installed resources has an honest 503 state',async()=>{const w=worker(async()=>{throw new Error('offline');});const response=await fetchEvent(w,'/',{mode:'navigate'});assert.equal(response.status,503);});

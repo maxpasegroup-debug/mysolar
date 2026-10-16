@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { unitEnvironment } from './helpers/env.mjs';
+unitEnvironment();
+const run=overrides=>spawnSync(process.execPath,['--input-type=module','-e','await import("./server/config.js")'],{cwd:new URL('../',import.meta.url),env:{...process.env,...overrides},encoding:'utf8',windowsHide:true});
+test('configuration: valid isolated test settings load',()=>assert.equal(run({}).status,0));
+test('configuration: missing mandatory secret fails without its value',()=>{const r=run({SESSION_SECRET:''});assert.notEqual(r.status,0);assert.match(r.stderr,/SESSION_SECRET/);});
+test('configuration: malformed origin does not expose its input in a startup stack',()=>{const r=run({APP_ORIGIN:'not a URL phase10-secret-marker'});assert.notEqual(r.status,0);assert.doesNotMatch(r.stderr,/phase10-secret-marker/);});
+test('configuration: non-PostgreSQL database URL is rejected',()=>assert.notEqual(run({DATABASE_URL:'https://database.test.invalid'}).status,0));
+test('configuration: database URL cannot override strict TLS through sslmode',()=>assert.notEqual(run({DATABASE_URL:'postgresql://unit:unit@127.0.0.1:1/mysolar_unit?sslmode=no-verify',DATABASE_SSL:'require'}).status,0));
+test('configuration: production requires HTTPS and forbids manual invitations',()=>{assert.notEqual(run({NODE_ENV:'production',APP_ORIGIN:'http://localhost:3000'}).status,0);assert.notEqual(run({NODE_ENV:'production',APP_ORIGIN:'https://app.test.invalid',INVITATION_DELIVERY:'manual'}).status,0);});

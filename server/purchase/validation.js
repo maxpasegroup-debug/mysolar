@@ -1,0 +1,29 @@
+import * as v from '../validation.js';
+import { badInput } from '../errors.js';
+import { plain,paragraph,services } from '../setup/validation.js';
+import { units,normalize } from '../marketplace/validation.js';
+import { decimal,calculate } from './money.js';
+export const revision=value=>{if(!Number.isSafeInteger(value)||value<1)throw badInput('Refresh this record before continuing.');return value;};
+const optionalId=value=>value===''||value===null?null:v.uuid(value);
+export function enquiry(value,preview=false){
+ const fields=['title','requestedItem','categoryId','productId','offerId','quantity','unit','projectType','state','district','pin','locality','address','requirements','contactMethod','timeframe','mode','service'];
+ v.body(value,preview?fields:[...fields,'companyIds','submissionKey']);
+ const result={title:plain(value.title,'title',120,1),requestedItem:plain(value.requestedItem,'requested product or service',200,1),categoryId:optionalId(value.categoryId),productId:optionalId(value.productId),offerId:optionalId(value.offerId),quantity:value.quantity===''?null:value.quantity,unit:value.unit===''?'':v.choice(value.unit,units,'unit'),projectType:v.choice(value.projectType,['rooftop_home','commercial','product_only','service','advice','other'],'project type'),state:plain(value.state,'state',100,1),district:plain(value.district,'district',100,1),pin:v.text(value.pin,'PIN',6,6),locality:plain(value.locality,'locality',100),address:plain(value.address,'address',300,1),requirements:paragraph(value.requirements,'requirements'),contactMethod:v.choice(value.contactMethod,['in_app','email','phone'],'contact method'),timeframe:plain(value.timeframe,'timeframe',150),mode:v.choice(value.mode,['direct','multiple','matching'],'distribution mode'),service:value.service===''?'':v.choice(value.service,services,'service')};
+ if(!/^[1-9]\d{5}$/.test(result.pin))throw badInput('Enter a six-digit Indian PIN.');
+ if(result.quantity!==null&&(decimal(result.quantity,3,'quantity',999999999999n)===0n||!result.unit))throw badInput('Provide a positive quantity and its unit, or leave both blank.');
+ if(result.quantity===null&&result.unit)throw badInput('Leave the unit blank when quantity is unknown.');
+ if(!result.productId&&!result.categoryId&&!result.service)throw badInput('Choose a category or service so distributors can be matched.');
+ if(!preview){if(!Array.isArray(value.companyIds)||value.companyIds.length>10)throw badInput('Choose up to ten distributors.');result.companyIds=[...new Set(value.companyIds.map(v.uuid))];if(result.companyIds.length!==value.companyIds.length)throw badInput('Remove duplicate distributors.');if(result.mode==='direct'&&result.companyIds.length>1)throw badInput('A direct enquiry can go to only one distributor.');result.submissionKey=v.uuid(value.submissionKey);}
+ result.location={state:normalize(result.state),district:normalize(result.district),pin:result.pin,area:''};return result;
+}
+export function quote(value){
+ const fields=['revision','reference','validUntil','taxMode','items','delivery','installation','chargesTaxRate','included','excluded','warranty','timeframe','paymentTerms','assumptions','installationScope','estimated'];v.body(value,fields);
+ const result={revision:revision(value.revision),reference:plain(value.reference,'quotation reference',80,1),validUntil:date(value.validUntil),taxMode:v.choice(value.taxMode,['unknown','exclusive','inclusive','exempt'],'tax treatment')};
+ for(const key of ['included','excluded','warranty','timeframe','paymentTerms','assumptions','installationScope'])result[key]=paragraph(value[key],key);
+ if(typeof value.estimated!=='boolean')throw badInput();result.estimated=value.estimated;
+ if(!Array.isArray(value.items)||value.items.length<1||value.items.length>20)throw badInput('Add between one and twenty line items.');
+ result.items=value.items.map(item=>{v.body(item,['productId','description','brand','model','specifications','quantity','unit','unitPrice','discount','taxRate']);return {productId:optionalId(item.productId),description:plain(item.description,'line description',300,1),brand:plain(item.brand,'brand',100),model:plain(item.model,'model',100),specifications:plain(item.specifications,'specifications',300),quantity:item.quantity,unit:v.choice(item.unit,units,'unit'),unitPrice:item.unitPrice,discount:item.discount,taxRate:item.taxRate};});
+ return {...result,chargesTaxRate:value.chargesTaxRate,...calculate(result.items,{taxMode:result.taxMode,delivery:value.delivery,installation:value.installation,chargesTaxRate:value.chargesTaxRate})};
+}
+export function date(value){if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value+'T00:00:00Z'))||new Date(value+'T00:00:00Z').toISOString().slice(0,10)!==value)throw badInput('Enter a valid date.');return value;}
+export function filters(value){v.body(value,['page','search','status','category','area','from','to'],[]);const page=value.page===undefined?1:Number(value.page);if(!Number.isSafeInteger(page)||page<1||page>10000)throw badInput('Invalid page.');const status=v.choice(value.status??'',['','submitted','sent','discussion','quotation_received','preferred','closed','cancelled','unread','draft','viewed','clarification_requested','revision_requested','expired','withdrawn','superseded'],'status'),from=value.from?date(value.from):'',to=value.to?date(value.to):'';if(from&&to&&from>to)throw badInput('The end date must be on or after the start date.');return {page,search:plain(value.search??'','search',100),status,category:value.category?v.uuid(value.category):null,area:plain(value.area??'','service area',100),from,to};}

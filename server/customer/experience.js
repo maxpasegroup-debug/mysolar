@@ -1,0 +1,37 @@
+import { Router } from 'express';
+import { withCustomer,quoteRecord } from '../purchase/service.js';
+import { permissionsFor } from '../permissions.js';
+import { ownRecord } from '../operations/customer.js';
+import { requireUser } from '../auth/sessions.js';
+import * as v from '../validation.js';
+export const customerExperience=Router();customerExperience.use(requireUser);
+customerExperience.get('/overview',async(req,res)=>{v.body(req.query,[]);res.json(await withCustomer(req,'customer.profile',async(db,user)=>{
+ const permissions=await permissionsFor(db,'customer'),sections=[];const authorized=p=>permissions.includes(p);
+ async function section(key,title,from,where,columns,order,href){const values=[user.id];const total=(await db.query(`SELECT count(*)::int AS count ${from} WHERE ${where}`,values)).rows[0].count;if(!total)return;const items=(await db.query(`SELECT ${columns} ${from} WHERE ${where} ORDER BY ${order} LIMIT 4`,values)).rows;sections.push({key,title,total,href,items});}
+ if(authorized('customer.enquiries.own'))await section('enquiries','Active enquiries','FROM customer_enquiries e',"e.customer_id=$1 AND e.status NOT IN ('closed','cancelled')",'e.id,e.title AS label,e.status,e.created_at','e.updated_at DESC,e.id','/customer/enquiries');
+ const quoteFrom='FROM quotation_versions q JOIN customer_enquiries e ON e.id=q.enquiry_id';
+ if(authorized('customer.quotations.own')){
+  await section('review','Quotations to review',quoteFrom,"e.customer_id=$1 AND q.status='sent' AND q.valid_until>=(now() AT TIME ZONE 'Asia/Kolkata')::date AND q.viewed_at IS NULL AND e.preferred_version_id IS DISTINCT FROM q.id AND e.status NOT IN ('closed','cancelled')","q.id,q.reference AS label,q.issuer_snapshot->>'name' AS company,q.version,q.total_paise,q.tax_mode,q.estimated,q.valid_until,'Not yet marked as viewed' AS status",'q.sent_at DESC,q.id','/customer/quotations');
+  await section('preferred','Preferred quotations',quoteFrom,"e.customer_id=$1 AND e.preferred_version_id=q.id AND q.status<>'draft'","q.id,q.reference AS label,q.issuer_snapshot->>'name' AS company,q.total_paise,q.tax_mode,q.estimated,q.valid_until,CASE WHEN q.status='sent' AND q.valid_until<(now() AT TIME ZONE 'Asia/Kolkata')::date THEN 'expired' ELSE 'customer preferred · not an order' END AS status",'q.sent_at DESC,q.id','/customer/quotations?status=preferred');
+ }
+ const owned=table=>`FROM ${table} r JOIN company_contacts c ON c.id=r.contact_id AND c.company_id=r.company_id`;
+ if(authorized('customer.orders.own')){
+  await section('confirmation','Orders awaiting agreement',owned('business_orders'),"c.user_id=$1 AND r.status='awaiting_confirmation'",'r.id,r.reference AS label,r.status,r.acceptance_mode,r.customer_confirmed_at,r.total_paise','r.created_at DESC,r.id','/customer/orders');
+  await section('orders','Confirmed orders',owned('business_orders'),"c.user_id=$1 AND r.status IN ('confirmed','processing','partially_fulfilled','fulfilled')",'r.id,r.reference AS label,r.status,r.confirmed_at,r.expected_date','r.created_at DESC,r.id','/customer/orders');
+  await section('invoices','Invoices and recorded balances',owned('customer_invoices'),"c.user_id=$1 AND r.status='issued'",`r.id,r.reference AS label,r.status,r.total_paise,r.due_date,(SELECT coalesce(sum(x.amount_paise),0)::text FROM customer_collections x WHERE x.company_id=r.company_id AND x.invoice_id=r.id) AS collected,(r.total_paise-(SELECT coalesce(sum(x.amount_paise),0) FROM customer_collections x WHERE x.company_id=r.company_id AND x.invoice_id=r.id))::text AS outstanding`,'r.due_date,r.id','/customer/invoices');
+  await section('service','Open service requests',owned('service_requests'),"c.user_id=$1 AND r.status<>'closed'",'r.id,r.reference AS label,r.status,r.follow_up','r.created_at DESC,r.id','/customer/service');
+ }
+ if(authorized('customer.installation.own'))await section('projects','Installation progress',owned('installation_projects'),"c.user_id=$1 AND r.status<>'cancelled'",`r.id,r.name AS label,r.status,r.scheduled_date,r.completed_at,(SELECT count(*)::int FROM project_milestones m WHERE m.project_id=r.id AND m.company_id=r.company_id AND m.status='done') AS recorded_complete,(SELECT count(*)::int FROM project_milestones m WHERE m.project_id=r.id AND m.company_id=r.company_id) AS milestone_count`,'r.created_at DESC,r.id','/customer/installation');
+ const activity=[];if(authorized('customer.enquiries.own'))activity.push("SELECT 'enquiries' AS kind,e.id,x.action,x.created_at FROM enquiry_events x JOIN customer_enquiries e ON e.id=x.enquiry_id WHERE e.customer_id=$1 AND x.customer_visible");
+ const operationalKinds=[...(authorized('customer.orders.own')?['orders','invoices','service']:[]),...(authorized('customer.installation.own')?['projects']:[])],tables={orders:'business_orders',projects:'installation_projects',invoices:'customer_invoices',service:'service_requests'};
+ for(const kind of operationalKinds)activity.push(`SELECT '${kind}' AS kind,r.id,x.action,x.created_at FROM operations_events x JOIN ${tables[kind]} r ON r.id=x.record_id AND r.company_id=x.company_id JOIN company_contacts c ON c.id=r.contact_id AND c.company_id=r.company_id WHERE x.record_type='${kind}' AND x.customer_visible AND c.user_id=$1 ${['orders','invoices'].includes(kind)?"AND r.status<>'draft'":''}`);
+ const recent=activity.length?(await db.query(`SELECT * FROM (${activity.join(' UNION ALL ')}) events ORDER BY created_at DESC,id LIMIT 8`,[user.id])).rows:[];
+ const notifications=[];if(authorized('customer.enquiries.own'))notifications.push("SELECT id,'workflow' AS source,'enquiries' AS kind,enquiry_id AS record_id,message,read_at,created_at FROM workflow_notifications WHERE user_id=$1 AND company_id IS NULL");
+ for(const kind of operationalKinds)notifications.push(`SELECT n.id,'operations' AS source,n.record_type AS kind,n.record_id,n.message,n.read_at,n.created_at FROM operations_notifications n JOIN ${tables[kind]} r ON r.id=n.record_id JOIN company_contacts c ON c.id=r.contact_id AND c.company_id=r.company_id WHERE n.user_id=$1 AND n.company_id IS NULL AND n.record_type='${kind}' AND c.user_id=$1 ${['orders','invoices'].includes(kind)?"AND r.status<>'draft'":''}`);
+ const updates=notifications.length?(await db.query(`SELECT * FROM (${notifications.join(' UNION ALL ')}) notifications ORDER BY created_at DESC,id LIMIT 5`,[user.id])).rows:[];
+ return {sections,activity:recent,notifications:updates,permissions};
+}));});
+customerExperience.get('/documents/:kind/:id',async(req,res)=>{v.body(req.query,[]);const kind=v.choice(req.params.kind,['quotations','orders','projects','invoices','service'],'document type'),id=v.uuid(req.params.id);res.json(await withCustomer(req,kind==='quotations'?'customer.quotations.own':kind==='projects'?'customer.installation.own':'customer.orders.own',async(db,user)=>{
+ const row=kind==='quotations'?await quoteRecord(db,id,{user}):await ownRecord(db,user,kind,id);
+ return {kind,id,title:kind==='projects'?row.name:row.reference,issuedOn:kind==='quotations'?row.quote_date:kind==='invoices'?row.issue_date:null,version:kind==='quotations'?row.version:null,hasSnapshot:['quotations','orders','invoices'].includes(kind),fileAvailable:false,privateReferencesExposed:false,message:'Secure document storage is not configured. View your authorized record and saved commercial snapshot in the application. Private company document references are not shared.'};
+}));});

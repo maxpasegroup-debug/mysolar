@@ -1,0 +1,87 @@
+import * as v from '../validation.js';
+import { badInput,HttpError } from '../errors.js';
+import { permissionsFor } from '../permissions.js';
+import { publishedProduct,Bindings } from '../marketplace/service.js';
+import * as purchase from '../purchase/service.js';
+import { assistance } from '../purchase/assistance.js';
+import { ownRecord } from '../operations/customer.js';
+import * as ops from '../operations/core.js';
+import { businessOverview } from '../operations/read.js';
+const money=value=>{const n=BigInt(value??0);return 'INR '+(n/100n).toString()+'.'+(n<0n?-(n%100n):n%100n).toString().padStart(2,'0');};
+const clean=value=>{const text=String(value??'').replace(/[\u0000-\u001f\u007f]/g,' ');return text.length>1600?text.slice(0,1550)+' [Excerpt; open source for full content.]':text;};
+const json=value=>clean(JSON.stringify(value));
+const denied=()=>new HttpError(403,'PERMISSION_DENIED','This assistance is not available for your current access.');
+const fields=(input,allowed,required=allowed)=>v.body(input,allowed,required);
+const info={
+ categories:['understand','Explain solar terms','General education only. No site sizing or savings calculation.',{},[],'General guidance'],
+ catalogue:['catalogue','Find published products','Search eligible published product definitions.',{search:'text <=100 characters'},['customer.sia.own'],'Published public catalogue'],
+ products:['products','Compare product specifications','Read up to three explicitly selected published definitions.',{ids:'1–3 product UUIDs'},['customer.sia.own'],'Published public catalogue'],
+ enquiry:['enquiry','Explain my enquiry','Read one owned enquiry and latest received quotation statuses.',{id:'enquiry UUID'},['customer.enquiries.own'],'Authenticated customer only'],
+ quotations:['quotations','Compare my quotations','Read 1–3 owned quotation versions for the same enquiry, existing totals and missing-term rules.',{ids:'1–3 quotation-version UUIDs'},['customer.quotations.own'],'Authenticated customer only'],
+ tracking:['tracking','Explain my progress','Read one owned order/project/invoice/service record and permitted milestones.',{kind:'orders | projects | invoices | service',id:'record UUID'},['customer.orders.own or customer.installation.own'],'Authenticated customer only'],
+ business:['business','Summarize my business','Use the existing permission/assignment-scoped dashboard and bounded operational indicators.',{},['sia.read','workspace.read','per-module permissions'],'Selected active company; current permissions and assignments'],
+ records:['records','Find company records','Search up to eight records with existing module read/assignment scopes.',{kind:'leads | orders | projects | tasks | service | inventory | purchases | invoices',search:'text <=100 characters'},['sia.read','per-module read permission'],'Selected active company; current assignments where required']
+};
+export const definitions=Object.freeze(Object.fromEntries(Object.entries(info).map(([id,[key,label,purpose,input,permissions,scope]])=>[id,Object.freeze({id,label,purpose,input,permissions,scope,readOnly:true,modelFields:['fact id','bounded text','provenance label','question id/text'],key})])));
+export function available(channel,permissions){return Object.values(definitions).filter(d=>channel==='company'?['categories','business','records'].includes(d.id):!['business','records'].includes(d.id)).filter(d=>d.id==='categories'||d.id==='business'||d.id==='records'||d.id==='catalogue'||d.id==='products'||d.permissions.every(p=>p.includes(' or ')||permissions.includes(p)));}
+export function validate(tool,input,channel){if(!definitions[tool]||!available(channel,[]).some(x=>x.id===tool)&&channel==='company')throw badInput('Choose a supported assistance tool.');if(channel==='customer'&&['business','records'].includes(tool))throw denied();
+ if(['categories','business'].includes(tool)){fields(input,[]);return {};}
+ if(tool==='catalogue'){fields(input,['search']);return {search:v.text(input.search,'search',100,0)};}
+ if(['products','quotations'].includes(tool)){fields(input,['ids']);if(!Array.isArray(input.ids)||input.ids.length<1||input.ids.length>3)throw badInput('Select one to three records.');const ids=[...new Set(input.ids.map(v.uuid))];if(ids.length!==input.ids.length)throw badInput('Choose different records.');return {ids};}
+ if(tool==='enquiry'){fields(input,['id']);return {id:v.uuid(input.id)};}
+ if(tool==='tracking'){fields(input,['kind','id']);return {kind:v.choice(input.kind,['orders','projects','invoices','service'],'record type'),id:v.uuid(input.id)};}
+ fields(input,['kind','search']);return {kind:v.choice(input.kind,['leads','orders','projects','tasks','service','inventory','purchases','invoices'],'record type'),search:v.text(input.search,'search',100,0)};
+}
+export async function gather(db,ctx,tool,input){
+ const facts=[],questions=[];const add=(text,label='Application record',href=null)=>facts.push({id:'f'+(facts.length+1),text:clean(text),label,href}),ask=text=>questions.push({id:'q'+(questions.length+1),text:clean(text)});
+ const permit=p=>{if(!ctx.permissions.includes(p))throw denied();};
+ const reference=(kind,id)=>ctx.channel==='customer'?(kind==='enquiries'?'/customer/enquiry?id='+id:kind==='quotations'?'/customer/quotation?id='+id:'/customer/business-record?kind='+kind+'&id='+id):'/distributor/record?kind='+kind+'&id='+id;
+ if(tool==='categories'){
+  add('Solar panels produce direct-current electricity from sunlight. Inverters convert direct current into alternating current; grid, hybrid and off-grid equipment have different compatibility requirements.','General educational guidance');
+  add('Batteries store energy. A kW rating describes power, while kWh describes energy. These labels alone cannot establish suitability for a particular site.','General educational guidance');
+  add('Compare supplied brands/models, capacity, tax treatment, installation scope, exclusions, warranty and service responsibilities. An equipment-only price may exclude installation, delivery and other work.','General educational guidance');
+  add('Explore explicitly published energy listings and distributor profiles. Publication is not an independent business certification.','Published discovery navigation','/vendors');
+  ask('Which site inputs, electrical design, approvals and confirmed equipment compatibility would a qualified installer need to establish suitability?');
+ }else if(tool==='catalogue'){
+  const rows=(await db.query("SELECT id,name,brand,model FROM marketplace_products WHERE name ILIKE '%'||$1||'%' OR brand ILIKE '%'||$1||'%' OR model ILIKE '%'||$1||'%' ORDER BY name,id LIMIT 8",[input.search])).rows;
+  for(const r of rows)add(`${r.name}; supplied brand: ${r.brand||'not supplied'}; model: ${r.model||'not supplied'}.`,'Published catalogue information · not independently verified','/product?id='+r.id);
+  if(!rows.length)add('No eligible published products match this search.','Missing information','/products');
+ }else if(tool==='products'){
+  for(const id of input.ids){const r=await publishedProduct(db,id);add(`${r.name}; brand ${r.brand||'not supplied'}; model ${r.model||'not supplied'}; specifications ${json(r.attributes)}; supplied warranty ${r.warranty||'not supplied'}.`,'Published catalogue information · not independently verified','/product?id='+id);}
+  ask('Are the supplied specifications, warranty and compatibility confirmed for my site? Compare each published listing; missing values cannot establish technical suitability.');
+ }else if(tool==='enquiry'){
+  permit('customer.enquiries.own');const r=await purchase.ownEnquiry(db,{id:ctx.userId},input.id);add(`${r.title}; enquiry status: ${r.status}.`,'Application record',reference('enquiries',r.id));
+  if(ctx.permissions.includes('customer.quotations.own')){const rows=(await db.query(`SELECT q.id,q.reference,q.version,q.total_paise,${purchase.effective()} AS effective_status FROM quotation_versions q JOIN customer_enquiries e ON e.id=q.enquiry_id WHERE e.id=$1 AND e.customer_id=$2 AND q.status<>'draft' ORDER BY q.created_at DESC,q.id LIMIT 6`,[r.id,ctx.userId])).rows;for(const q of rows)add(`${q.reference}, version ${q.version}: ${q.effective_status}; stored total ${money(q.total_paise)}.`,'Distributor-provided quotation · not independently verified',reference('quotations',q.id));}
+ }else if(tool==='quotations'){
+  permit('customer.quotations.own');let enquiry=null;const amounts=[];
+  for(const id of input.ids){const r=await purchase.quoteRecord(db,id,{user:{id:ctx.userId}});if(enquiry&&enquiry!==r.enquiry_id)throw badInput('Compare quotations for the same enquiry.');enquiry=r.enquiry_id;const items=await purchase.items(db,id),rules=assistance(r,items);amounts.push(BigInt(r.total_paise));
+   add(`${r.reference}, version ${r.version}; ${r.effective_status}; validity ${r.valid_until}; stored total ${money(r.total_paise)}; tax ${r.tax_mode}; ${r.estimated?'estimate':'issuer did not mark as estimate'}.`,'Distributor-provided quotation · not independently verified',reference('quotations',id));
+   add(`For ${r.reference}: installation charge ${money(r.installation_paise)}; delivery charge ${money(r.delivery_paise)}. Installation scope: ${r.installation_scope||'not supplied'}. Included: ${r.included||'not supplied'}. Excluded: ${r.excluded||'not supplied'}. A zero charge alone does not confirm installation is included.`,'Distributor-provided scope · not independently verified',reference('quotations',id));
+   for(const item of items.slice(0,4))add(`${r.reference}: ${item.description}; brand ${item.brand||'unknown'}; model ${item.model||'unknown'}; quantity ${item.quantity} ${item.unit}; specifications ${json(item.specifications)}.`,'Distributor-provided equipment · not independently verified',reference('quotations',id));
+   for(const question of rules.questions)ask(r.reference+': '+question);
+  }
+  if(amounts.length>1){const min=amounts.reduce((a,b)=>a<b?a:b),max=amounts.reduce((a,b)=>a>b?a:b);add(`Difference between highest and lowest stored headline totals: ${money(max-min)}. Scope, tax, estimate flags and exclusions may differ; this is not a savings calculation or vendor ranking.`,'Server-calculated comparison');}
+ }else if(tool==='tracking'){
+  permit(input.kind==='projects'?'customer.installation.own':'customer.orders.own');const r=await ownRecord(db,{id:ctx.userId},input.kind,input.id);add(`${r.reference||r.name}; ${input.kind} status: ${r.status}.`,'Application record',reference(input.kind,r.id));
+  if(input.kind==='orders')add(`Confirmation recorded: ${r.confirmed_at?r.confirmed_at.toISOString():'not recorded'}. Recorded expected date: ${r.expected_date||'not supplied'}. An expected date is not proof of delivery or installation.`,'Distributor-entered record',reference(input.kind,r.id));
+  if(input.kind==='projects'){const rows=(await db.query('SELECT code,status,evidence_reference FROM project_milestones WHERE project_id=$1 AND company_id=$2 ORDER BY code LIMIT 12',[r.id,r.company_id])).rows;for(const m of rows)add(`${m.code}: ${m.status}; supporting reference ${m.evidence_reference?'recorded, not independently verified':'not supplied'}.`,'Distributor-entered milestone',reference(input.kind,r.id));}
+  if(input.kind==='invoices'){const collected=(await db.query('SELECT coalesce(sum(amount_paise),0)::text AS amount FROM customer_collections WHERE company_id=$1 AND invoice_id=$2',[r.company_id,r.id])).rows[0].amount;add(`Stored invoice total ${money(r.total_paise)}; net recorded collections ${money(collected)}; outstanding recorded balance ${money(BigInt(r.total_paise)-BigInt(collected))}. Entries are not bank or provider confirmations.`,'Application financial record',reference(input.kind,r.id));}
+  ask('Which recorded updates or supporting references should the distributor clarify? Project, order and payment statuses remain separate.');
+ }else if(tool==='business'){
+  const overview=await businessOverview(db,ctx);for(const card of overview.cards)add(`${card.label}: ${card.money?money(card.value):card.value}.`,'Current authorized application aggregate',card.kind==='enquiries'?'/distributor/leads':card.kind==='quotations'?'/distributor/quotations':card.kind==='invoices'?'/distributor/accounts':'/distributor/'+card.kind);
+  const stats=async(kind,label,condition)=>{try{ops.readPermission(ctx,kind);}catch{return;}const b=new Bindings(),where=ops.scope(ctx,kind,b);where.push(condition);const r=(await db.query(`SELECT count(*)::int AS count FROM ${ops.definitions[kind][0]} r WHERE ${where.join(' AND ')}`,b.values)).rows[0];add(label+': '+r.count+'.','Current authorized application aggregate','/distributor/'+(kind==='leads'?'crm':kind));};
+  await stats('leads','New leads created in the last 7 days',"r.created_at>=now()-interval '7 days'");await stats('leads','Open leads created at least 14 days ago',"r.created_at<=now()-interval '14 days' AND r.stage NOT IN ('won','lost')");
+  await stats('projects','Projects past recorded schedule and not complete',"r.scheduled_date<(now() AT TIME ZONE 'Asia/Kolkata')::date AND r.status NOT IN ('completed','cancelled')");
+  if(ctx.permissions.includes('projects.read')||ctx.permissions.includes('projects.assigned.read'))add('Individual milestone due dates are not stored. Delays above mean projects past their recorded schedule, not independently established milestone lateness.','Missing information');
+  if(ctx.permissions.includes('finance.read')){const r=(await db.query("SELECT coalesce(sum(i.total_paise-(SELECT coalesce(sum(x.amount_paise),0) FROM customer_collections x WHERE x.invoice_id=i.id AND x.company_id=i.company_id)),0)::text AS outstanding FROM customer_invoices i WHERE i.company_id=$1 AND i.status='issued'",[ctx.companyId])).rows[0];add('Outstanding issued invoice balances: '+money(r.outstanding)+'. This is a recorded ledger balance, not bank-confirmed cash flow.','Server-calculated financial aggregate','/distributor/accounts');}
+  if(ctx.permissions.includes('procurement.read')){const r=(await db.query("SELECT count(*)::int AS count FROM purchase_order_items i JOIN purchase_orders p ON p.id=i.purchase_id AND p.company_id=i.company_id WHERE p.company_id=$1 AND p.status IN ('approved','partially_received') AND i.received_milli<i.quantity_milli",[ctx.companyId])).rows[0];add('Approved procurement lines with quantities still to receive: '+r.count+'.','Application procurement record','/distributor/procurement');}
+  if(ctx.permissions.includes('leads.read')){const r=(await db.query("SELECT count(*)::int AS count FROM enquiry_recipients x JOIN customer_enquiries e ON e.id=x.enquiry_id WHERE x.company_id=$1 AND e.status NOT IN ('closed','cancelled') AND NOT EXISTS(SELECT 1 FROM enquiry_messages m WHERE m.enquiry_id=e.id AND m.company_id=x.company_id AND m.author_side='distributor')",[ctx.companyId])).rows[0];add('Open enquiries with no recorded distributor message: '+r.count+'.','Application aggregate · quotations may exist','/distributor/leads');}
+  if(ctx.permissions.includes('quotations.read')){const r=(await db.query("SELECT count(*)::int AS count FROM quotation_versions WHERE company_id=$1 AND status='sent' AND valid_until BETWEEN (now() AT TIME ZONE 'Asia/Kolkata')::date AND (now() AT TIME ZONE 'Asia/Kolkata')::date+7",[ctx.companyId])).rows[0];add('Issued quotations with validity ending within 7 days: '+r.count+'.','Current application aggregate','/distributor/quotations');}
+  for(const event of overview.events.slice(0,4))add(`${event.action} recorded ${event.created_at.toISOString()}.`,'Recent authorized application activity','/distributor/record?kind='+event.record_type+'&id='+event.record_id);
+  ask('Which ageing items have a recorded next action? Missing schedules, stock movements or collection entries can make these summaries incomplete.');
+ }else if(tool==='records'){
+  ops.readPermission(ctx,input.kind);const b=new Bindings(),where=ops.scope(ctx,input.kind,b);where.push(`r.${ops.definitions[input.kind][3]} ILIKE '%'||${b.add(input.search)}||'%'`);const rows=(await db.query(`SELECT r.id,r.${ops.definitions[input.kind][3]} AS label FROM ${ops.definitions[input.kind][0]} r WHERE ${where.join(' AND ')} ORDER BY r.created_at DESC,r.id LIMIT 8`,b.values)).rows;for(const r of rows)add(r.label,'Authorized company record',reference(input.kind,r.id));if(!rows.length)add('No authorized records match this search.','Application result');
+ }
+ return {facts:facts.slice(0,40),questions:questions.slice(0,24),asOf:new Date().toISOString(),scope:ctx.channel==='company'?'Selected company; current role and assignments':'Your own customer records and explicitly published catalogue',period:tool==='business'?'Current stored statuses; all-time net collections; new leads 7 days; ageing leads 14 days; quote validity next 7 days; recent activity limited to 4 entries.':'Snapshot when requested; lists are bounded, not a complete export.',limitations:['Stored and distributor-provided information is not independently verified.','No sizing, savings, payback, subsidy, certification, warranty or availability is inferred.','Open the source record for complete terms, current status and explicit human actions.']};
+}
+export async function customerPermissions(db){return permissionsFor(db,'customer');}

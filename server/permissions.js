@@ -10,7 +10,7 @@ export const roleDefinitions = Object.freeze({
   accounts: { scope: 'company', label: 'Accounts', permissions: ['workspace.read','company.read','accounts.read'] },
   customer: { scope: 'customer', label: 'Customer', permissions: ['customer.profile','customer.enquiries.own','customer.quotations.own','customer.orders.own','customer.installation.own'] }
 });
-export const staffRoles = Object.keys(roleDefinitions).filter(key => roleDefinitions[key].scope === 'company' && key !== 'owner');
+export const staffRoles = [...Object.keys(roleDefinitions).filter(key => roleDefinitions[key].scope === 'company' && key !== 'owner'),'part_time_sales'];
 export const modulePermissions = Object.freeze({ leads: 'leads.read', quotations: 'quotations.read', projects: 'projects.read', inventory: 'inventory.read', accounts: 'accounts.read', service: 'service.read', sia: 'sia.read' });
 export async function permissionsFor(db, role) {
   const result = await db.query('SELECT permission_id FROM role_permissions WHERE role_id = $1 ORDER BY permission_id', [role]);

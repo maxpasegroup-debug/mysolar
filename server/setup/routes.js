@@ -7,16 +7,31 @@ import * as input from './validation.js';
 import { expectRevision,editable,markChanged,setupData,reviewEvent,brandDefaults,assertReady } from './service.js';
 import { HttpError } from '../errors.js';
 import { staffRoles } from '../permissions.js';
+import {growthAccess,requirePro} from '../commercial/growth.js';
+import {staffDetails} from './staff.js';
+import {audit} from '../db/pool.js';
 export const setup=Router();
 setup.use(requireUser);
 setup.use((req,res,next)=>['GET','HEAD'].includes(req.method)?next():csrf(req,res,next));
+setup.patch('/team/:id/details',async(req,res)=>{
+ const id=v.uuid(req.params.id);v.body(req.body,['revision','staffDetails']);
+ const details=staffDetails(req.body.staffDetails,'part_time_sales');if(!Number.isSafeInteger(req.body.revision)||req.body.revision<1)throw new HttpError(400,'INVALID_INPUT','Refresh the executive details.');
+ res.json(await withCompany(req,'members.manage',async(db,ctx)=>{
+  await requirePro(db,ctx.companyId);
+  const old=(await db.query("SELECT staff_details,staff_revision FROM company_memberships WHERE id=$1 AND company_id=$2 AND role_id='part_time_sales' FOR UPDATE",[id,ctx.companyId])).rows[0];
+  if(!old||old.staff_revision!==req.body.revision)throw new HttpError(409,'MEMBER_CHANGED','Refresh the team before updating these details.');
+  await db.query('UPDATE company_memberships SET staff_details=$1,staff_revision=staff_revision+1,updated_at=now() WHERE id=$2 AND company_id=$3',[details,id,ctx.companyId]);
+  await audit(db,{actor:ctx.userId,company:ctx.companyId,action:'membership.business_details_updated',target:id,metadata:{previous:old.staff_details,next:details,revision:req.body.revision}});
+  return {message:'Executive business details saved. Account identity and permissions are unchanged.'};
+ }));
+});
 setup.get('/setup',async(req,res)=>res.json(await withCompany(req,'company.setup.read',async(db,ctx)=>({...(await setupData(db,ctx.companyId,{team:true})),logoHosts:config.logoHosts,defaults:brandDefaults}))));
 setup.get('/team',async(req,res)=>res.json(await withCompany(req,'company.setup.read',async(db,ctx)=>{
   if(!ctx.permissions.includes('members.read'))throw new HttpError(403,'PERMISSION_DENIED','Team access is not allowed.');
-  const members=await db.query('SELECT m.id,u.display_name AS name,u.email,m.role_id AS role,m.status FROM company_memberships m JOIN users u ON u.id=m.user_id WHERE m.company_id=$1 ORDER BY m.created_at',[ctx.companyId]);
+  const members=await db.query('SELECT m.id,m.user_id,u.display_name AS name,u.email,m.role_id AS role,m.status,m.staff_details,m.staff_revision FROM company_memberships m JOIN users u ON u.id=m.user_id WHERE m.company_id=$1 ORDER BY m.created_at',[ctx.companyId]);
   const invitations=await db.query("SELECT id,email,role_id AS role,CASE WHEN status='pending' AND expires_at<=now() THEN 'expired' ELSE status END AS status,delivery,expires_at FROM company_invitations WHERE company_id=$1 ORDER BY created_at DESC LIMIT 100",[ctx.companyId]);
   const events=await db.query("SELECT id,action,metadata,created_at FROM audit_events WHERE company_id=$1 AND (action LIKE 'membership.%' OR action LIKE 'invitation.%') ORDER BY id DESC LIMIT 30",[ctx.companyId]);
-  return {members:members.rows,invitations:invitations.rows,events:events.rows,assignableRoles:staffRoles,deliveryMode:config.invitationDelivery,available:config.invitationDelivery==='manual'||config.mailEnabled,readOnly:ctx.lifecycle==='suspended'};
+  return {growth:await growthAccess(db,ctx.companyId),members:members.rows,invitations:invitations.rows,events:events.rows,assignableRoles:staffRoles,deliveryMode:config.invitationDelivery,available:true,emailAvailable:config.mailEnabled,readOnly:ctx.lifecycle==='suspended'};
 })));
 setup.get('/branding',async(req,res)=>res.json(await withCompany(req,'company.brand.read',async(db,ctx)=>{
   const brand=(await db.query('SELECT public_name,logo_url,primary_color,secondary_color,accent_color,welcome_text,public_email,public_phone,description,appearance FROM company_branding WHERE company_id=$1',[ctx.companyId])).rows[0];return {brand};

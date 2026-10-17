@@ -9,6 +9,7 @@ import { HttpError, badInput } from '../errors.js';
 import * as v from '../validation.js';
 import { editable,markChanged } from '../setup/service.js';
 import { teamCapacity } from '../commercial/policy.js';
+import {requireStaffEntitlement,PART_TIME_ROLE} from '../commercial/growth.js';
 export const companies=Router();
 companies.use(requireUser);
 companies.use((req,res,next)=>['GET','HEAD'].includes(req.method)?next():csrf(req,res,next));
@@ -66,6 +67,7 @@ companies.post('/current/members',async(req,res)=>{
   const input=v.body(req.body,['email','role']);const email=v.email(input.email),role=v.choice(input.role,staffRoles,'company role');
   await limit(req,'member-add',req.session.user_id,30,3600);
   res.status(201).json(await withCompany(req,'members.manage',async(db,ctx)=>{
+    if(role===PART_TIME_ROLE)throw new HttpError(400,'INVITATION_REQUIRED','Invite part-time executives through Team so they can accept their assigned access.');
     const user=await db.query("SELECT id FROM users WHERE email=$1 AND status='active'",[email]);
     if(!user.rowCount)throw new HttpError(400,'MEMBER_UNAVAILABLE','This account cannot be added. Ask the person to register first and confirm their account email.');
     const existing=await db.query('SELECT id FROM company_memberships WHERE company_id=$1 AND user_id=$2',[ctx.companyId,user.rows[0].id]);
@@ -84,6 +86,8 @@ companies.patch('/current/members/:membershipId',async(req,res)=>{
     const member=await db.query('SELECT id,user_id,role_id,status FROM company_memberships WHERE id=$1 AND company_id=$2 FOR UPDATE',[id,ctx.companyId]);
     if(!member.rowCount)throw new HttpError(404,'NOT_FOUND','Membership not found.');
     if(member.rows[0].role_id==='owner')throw new HttpError(403,'OWNER_PROTECTED','Owner changes require a separate ownership-transfer workflow.');
+    if(role!==member.rows[0].role_id&&(role===PART_TIME_ROLE||member.rows[0].role_id===PART_TIME_ROLE))throw new HttpError(409,'ROLE_TRANSFER_REQUIRED','Part-time sales access cannot be converted into a broader role here. Suspend or remove access and use a separately reviewed invitation.');
+    if(status==='active')await requireStaffEntitlement(db,ctx.companyId,role);
     if(status==='active'&&member.rows[0].status!=='active')await teamCapacity(db,ctx.companyId);
     await db.query('UPDATE company_memberships SET role_id=$1,status=$2,updated_at=now() WHERE id=$3 AND company_id=$4',[role,status,id,ctx.companyId]);
     // Membership is checked on every request. Session retrieval clears a revoked selection.

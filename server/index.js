@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath,pathToFileURL } from 'node:url';
 import { migrationManifest } from './db/migrations.js';
 import { config } from './config.js';
+import {hostnameBoundary} from './domains/resolution.js';
+import {companyDomains,platformDomains} from './domains/routes.js';
 import { pool } from './db/pool.js';
 import { HttpError, errorHandler } from './errors.js';
 import { sameOrigin, limit } from './auth/security.js';
@@ -12,6 +14,7 @@ import { auth } from './auth/routes.js';
 import { companies, platformAudit } from './tenancy/routes.js';
 import { customer } from './customer/routes.js';
 import { setup } from './setup/routes.js';
+import {partners} from './partners/routes.js';
 import { invitations } from './setup/invitations.js';
 import { platform } from './platform/routes.js';
 import { discovery } from './marketplace/public.js';
@@ -22,6 +25,7 @@ import { purchaseCompany } from './purchase/company.js';
 import { customerNotifications,companyNotifications } from './purchase/notifications.js';
 import { operations } from './operations/read.js';
 import { crm } from './operations/crm.js';
+import {customerInvitations} from './operations/customer-invitations.js';
 import { orders } from './operations/orders.js';
 import { warehouse } from './operations/stock.js';
 import { delivery } from './operations/delivery.js';
@@ -43,6 +47,7 @@ app.use(helmet({
   }},referrerPolicy:{policy:'no-referrer'}
 }));
 app.use((req,res,next)=>{req.requestId=randomUUID();res.set('X-Request-ID',req.requestId);next();});
+app.use(hostnameBoundary({db:pool,origin:config.origin,production:config.production}));
 app.get('/healthz',(req,res)=>{res.set('Cache-Control','no-store').json({status:'ok'});});
 let readiness;
 app.get('/readyz',async(req,res)=>{res.set('Cache-Control','no-store');try{readiness??=(async()=>{const expected=await migrationManifest(),result=await pool.query({text:'SELECT name,checksum FROM schema_migrations WHERE name=ANY($1::text[])',values:[expected.map(x=>x.name)],query_timeout:1500});return expected.every(x=>result.rows.some(r=>r.name===x.name&&r.checksum===x.checksum));})().finally(()=>{readiness=null;});const ready=await readiness;res.status(ready?200:503).json({status:ready?'ready':'unavailable'});}catch{res.status(503).json({status:'unavailable'});}});
@@ -56,12 +61,14 @@ app.use(['/api/companies/current/enquiries/:id/quotations','/api/companies/curre
 app.use('/api',sameOrigin,express.json({limit:'16kb',strict:true}),sessionMiddleware);
 app.use('/api',(req,res,next)=>{const expected=req.get('x-account-id');if(expected&&expected!==req.session?.user_id)throw new HttpError(409,'ACCOUNT_CONTEXT_CHANGED','Your signed-in account changed. Refresh before submitting this form.');next();});
 app.use('/api/auth',auth);
+app.use('/api/platform/domains',platformDomains);
+app.use('/api/companies/current/domains',companyDomains);
 app.use('/api/platform/commercial',commercial);
 app.use('/api/companies/current/subscription',ownerCommercial);
 app.use('/api/customer/sia',siaRoutes());
 app.use('/api/companies/current/sia',siaRoutes(true));
 app.use('/api/customer/experience',customerExperience);
-app.use('/api/companies/current/operations',operations,crm,orders,warehouse,delivery,finance,notificationRoutes());
+app.use('/api/companies/current/operations',operations,crm,customerInvitations,orders,warehouse,delivery,finance,notificationRoutes());
 app.use('/api/customer/operations',customerOperations,notificationRoutes(true));
 app.use('/api/customer',purchaseCustomer,customerNotifications);
 app.use('/api/companies/current',purchaseCompany,companyNotifications);
@@ -69,6 +76,7 @@ app.use('/api/public',discovery);
 app.use('/api/companies/current',listings);
 app.use('/api/platform/catalogue',catalogueAdmin);
 app.use('/api/companies/current',setup);
+app.use('/api',partners);
 app.use('/api',invitations);
 app.use('/api/platform',platform);
 app.use('/api/companies',companies);
@@ -77,7 +85,7 @@ app.get('/api/platform/audit',requireUser,platformAudit);
 app.use('/api',(req,res)=>res.status(404).json({error:{code:'NOT_FOUND',message:'API route not found.',requestId:req.requestId}}));
 // Explicit asset allowlist. Never expose .env, server source, migrations or dependency directories.
 const root=new URL('../',import.meta.url);
-for(const asset of ['solar-discovery.css','src/solar-discovery.js','onboarding.css','src/onboarding.js','public-header.css','src/public-header.js','assets/my-solar-solutions-logo.png','landing.css','src/landing.js','assets/landing-solar.jpg','assets/landing-solar-960.webp','assets/landing-solar-1536.webp','index.html','styles.css','accounts.css','organization.css','marketplace.css','purchase.css','operations.css','experience.css','sia.css','src/sia.js','commercial.css','src/commercial.js','manifest.webmanifest','sw.js','offline.html','offline.css','assets/app-mark.svg','assets/app-192.png','assets/app-512.png','assets/apple-touch-icon.png','src/locale.js','src/journey.js','src/pwa.js','src/experience.js','src/app.js','src/account.js','src/organization.js','src/marketplace.js','src/purchase.js','src/operations.js']) {
+for(const asset of ['solar-discovery.css','src/solar-discovery.js','onboarding.css','src/onboarding.js','public-header.css','src/public-header.js','assets/my-solar-solutions-logo.png','landing.css','src/landing.js','assets/landing-solar.jpg','assets/landing-solar-960.webp','assets/landing-solar-1536.webp','index.html','styles.css','accounts.css','organization.css','marketplace.css','purchase.css','operations.css','experience.css','sia.css','src/sia.js','commercial.css','src/commercial.js','manifest.webmanifest','sw.js','offline.html','offline.css','assets/app-mark.svg','assets/app-192.png','assets/app-512.png','assets/apple-touch-icon.png','src/locale.js','src/journey.js','src/pwa.js','src/experience.js','src/app.js','src/account.js','src/growth.js','src/organization.js','src/marketplace.js','src/purchase.js','src/operations.js']) {
   app.get(`/${asset}`,(req,res)=>{res.set('Cache-Control','no-cache');if(asset==='manifest.webmanifest')res.type('application/manifest+json');if(asset==='sw.js')res.set('Service-Worker-Allowed','/');res.sendFile(fileURLToPath(new URL(asset,root)));});
 }
 app.get('/',(req,res)=>{res.set('Cache-Control','no-cache');res.sendFile(fileURLToPath(new URL('index.html',root)));});

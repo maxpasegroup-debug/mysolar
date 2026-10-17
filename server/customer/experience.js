@@ -29,7 +29,8 @@ customerExperience.get('/overview',async(req,res)=>{v.body(req.query,[]);res.jso
  const notifications=[];if(authorized('customer.enquiries.own'))notifications.push("SELECT id,'workflow' AS source,'enquiries' AS kind,enquiry_id AS record_id,message,read_at,created_at FROM workflow_notifications WHERE user_id=$1 AND company_id IS NULL");
  for(const kind of operationalKinds)notifications.push(`SELECT n.id,'operations' AS source,n.record_type AS kind,n.record_id,n.message,n.read_at,n.created_at FROM operations_notifications n JOIN ${tables[kind]} r ON r.id=n.record_id JOIN company_contacts c ON c.id=r.contact_id AND c.company_id=r.company_id WHERE n.user_id=$1 AND n.company_id IS NULL AND n.record_type='${kind}' AND c.user_id=$1 ${['orders','invoices'].includes(kind)?"AND r.status<>'draft'":''}`);
  const updates=notifications.length?(await db.query(`SELECT * FROM (${notifications.join(' UNION ALL ')}) notifications ORDER BY created_at DESC,id LIMIT 5`,[user.id])).rows:[];
- return {sections,activity:recent,notifications:updates,permissions};
+ const companies=(await db.query("SELECT c.id,coalesce(nullif(b.public_name,''),c.name) AS name FROM company_contacts x JOIN companies c ON c.id=x.company_id LEFT JOIN company_branding b ON b.company_id=c.id WHERE x.user_id=$1 ORDER BY c.name,c.id",[user.id])).rows;
+ return {sections,activity:recent,notifications:updates,permissions,companies};
 }));});
 customerExperience.get('/documents/:kind/:id',async(req,res)=>{v.body(req.query,[]);const kind=v.choice(req.params.kind,['quotations','orders','projects','invoices','service'],'document type'),id=v.uuid(req.params.id);res.json(await withCustomer(req,kind==='quotations'?'customer.quotations.own':kind==='projects'?'customer.installation.own':'customer.orders.own',async(db,user)=>{
  const row=kind==='quotations'?await quoteRecord(db,id,{user}):await ownRecord(db,user,kind,id);

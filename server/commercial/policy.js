@@ -1,4 +1,5 @@
 import { HttpError } from '../errors.js';
+import {requirePro,PART_TIME_ROLE} from './growth.js';
 export const features=Object.freeze({storefront:'Public storefront',catalogue:'Catalogue and offers',crm:'CRM and enquiries',quotations:'Quotations',orders:'Orders',team:'Team members',inventory:'Inventory and procurement',projects:'Projects and field work',finance:'Finance records',service:'Customer service',white_label:'White-label customization',sia_ceo:'SIA Virtual CEO',custom_domain:'Future custom-domain capability'});
 export const limitNames=Object.freeze({team:'Active members + pending invitations',publishedOffers:'Published offers',siaDaily:'Daily external SIA attempts',siaMonthly:'Monthly external SIA attempts'});
 export const policy=async(db,companyId)=>(await db.query('SELECT commercial_policy($1::uuid) AS policy',[companyId])).rows[0].policy;
@@ -8,7 +9,11 @@ export async function teamCapacity(db,companyId,excludeInvitation=null){const p=
 const groups={contacts:'crm',leads:'crm',orders:'orders',inventory:'inventory',stock:'inventory',reservations:'inventory',suppliers:'inventory',purchases:'inventory',receipts:'inventory',projects:'projects',tasks:'projects',invoices:'finance',collections:'finance',bills:'finance',service:'service'};
 // Called inside withCompany, after permission checks and the existing company lock.
 export async function guard(db,ctx,req,permission){if(['GET','HEAD'].includes(req.method))return;const path=req.originalUrl.split('?')[0].replace(/\/{2,}/g,'/').replace(/^\/api\/companies\/current\/?/,'');
+ if(ctx.role===PART_TIME_ROLE)await requirePro(db,ctx.companyId);
+ if(path==='partners'||path.startsWith('partners/')){if(!['suspended','revoked','declined'].includes(req.body?.status))await requirePro(db,ctx.companyId);return;}
  if(path.startsWith('subscription'))return;
+ // Disabling a hostname must remain possible after entitlement expiry. Never infer billing from it.
+ if(path.startsWith('domains/')&&['suspend','remove'].includes(req.body?.action))return;
  if(path==='sia/messages'||path==='sia/history')return; // Read assistance / history deletion; external execution has its own budget guard.
  if(path.startsWith('sia/proposals/')&&req.body?.decision==='reject')return;
  if(path.includes('/revoke')||permission==='members.manage'&&['suspended','removed'].includes(req.body?.status)||path.includes('offers/')&&['unpublish','deactivate'].includes(req.body?.action)||path==='marketplace-request'&&req.body?.requested===false)return;
@@ -18,6 +23,7 @@ export async function guard(db,ctx,req,permission){if(['GET','HEAD'].includes(re
  else if(path.startsWith('offers'))required=['catalogue'];
  else if(path.includes('quotations'))required=['quotations'];
  else if(path.startsWith('enquiries'))required=[path.endsWith('/quotations')?'quotations':'crm'];
+ else if(path==='domains'||path.startsWith('domains/'))required=['custom_domain'];
  else if(path.startsWith('members')||path.startsWith('invitations'))required=['team'];
  else if(path==='branding')required=['white_label'];
  else if(path===''&&permission==='company.manage'){const old=(await db.query('SELECT storefront_description FROM companies WHERE id=$1',[ctx.companyId])).rows[0];if(old&&req.body.description!==old.storefront_description)required=['white_label'];}

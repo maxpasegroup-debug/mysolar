@@ -7,12 +7,7 @@ const PublicHeader = (() => {
   const restoredInert = new Map();
   const compact = () => matchMedia('(max-width: 999px)').matches;
   const definitions = [
-    { id: 'explore', title: 'Explore Solar', caption: 'YOUR SOLAR JOURNEY', items: [
-      ['/products', 'Solar Solutions', 'Explore published solar products and equipment.', 'sun'],
-      ['/vendors', 'Find Solar Providers', 'Browse distributors and their declared service areas.', 'pin'],
-      ['/customer/enquiry/new', 'Request a Quote', 'Share your requirements with selected distributors.', 'file'],
-      ['/customer/compare', 'Compare Quotations', 'Review quotations for the same enquiry after sign-in.', 'compare']
-    ] },
+    { id: 'explore', title: 'Explore Solar' },
     { id: 'business', title: 'For Businesses', caption: 'BUSINESS OPPORTUNITIES', items: [
       ['/?section=platform', 'Business Platform', 'Explore the shared tools for running a solar business.', 'grid'],
       ['/distributor', 'Distributors', 'Discover the distributor workspace and opportunities.', 'box'],
@@ -39,6 +34,7 @@ const PublicHeader = (() => {
       .map(([, path, label]) => link(path, label, 'ph-operator-link')).join('');
   }
   function group({ id, title, caption, items }) {
+    if(id==='explore')return `<div class="ph-group ph-discovery-group"><button type="button" class="ph-trigger" id="ph-trigger-explore" aria-expanded="false" aria-controls="ph-panel-explore" data-ph-group="explore">Explore Solar<svg class="ph-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>${SolarDiscovery.markup()}</div>`;
     return `<div class="ph-group"><button type="button" class="ph-trigger" id="ph-trigger-${id}" aria-expanded="false" aria-controls="ph-panel-${id}" data-ph-group="${id}">${title}<svg class="ph-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button><div class="ph-panel" id="ph-panel-${id}" aria-labelledby="ph-trigger-${id}" hidden><p class="ph-caption">${caption}</p>${items.map(([path, label, description, symbol, emphasis]) => link(path, `<span class="ph-item-icon">${icon(symbol)}</span><span><strong>${label}</strong><small>${description}</small></span>`, `ph-item ${emphasis ? 'ph-item-emphasis' : ''}`)).join('')}${id === 'business' ? operatorLinks() : ''}${id === 'learn' ? `<div class="ph-language"><span>Interface language</span>${languageSelect()}<small>Some content remains in English.</small></div>` : ''}</div></div>`;
   }
   function journey() {
@@ -60,6 +56,7 @@ const PublicHeader = (() => {
     closeGroups();
     button.setAttribute('aria-expanded', String(expanded));
     document.getElementById(button.getAttribute('aria-controls')).hidden = !expanded;
+    if(expanded&&button.dataset.phGroup==='explore')SolarDiscovery.open();
   }
   function restoreBackground() {
     restoredInert.forEach((value, element) => { element.inert = value; });
@@ -99,6 +96,7 @@ const PublicHeader = (() => {
     document.body.classList.remove('ph-journey-lock');
   }
   function cleanup() {
+    SolarDiscovery.cleanup();
     Onboarding.cleanup();
     controller?.abort();
     controller = null;
@@ -116,7 +114,8 @@ const PublicHeader = (() => {
     const { signal } = controller;
     const dialog = document.getElementById('ph-journey');
     Onboarding.mount({chooseAudience:()=>{document.body.classList.add('ph-journey-lock');dialog.showModal();}});
-    const focusable = root => [...root.querySelectorAll('a[href],button,select')].filter(node => !node.disabled && node.getClientRects().length && !node.closest('[hidden]'));
+    SolarDiscovery.mount();
+    const focusable = root => [...root.querySelectorAll('a[href],button,select,summary,[data-ds-belt]')].filter(node => !node.disabled && node.getClientRects().length && !node.closest('[hidden]'));
     document.addEventListener('click', event => {
       const choice=event.target.closest('[data-onboarding]');
       if(choice&&!Account.user){event.preventDefault();closeJourney();Onboarding.open(choice.dataset.onboarding,opener);return;}

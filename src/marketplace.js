@@ -70,6 +70,6 @@ window.Marketplace=(()=>{
   },f);});
   document.addEventListener('click',event=>{const target=event.target.closest('[data-market-action]');if(!target)return;const action=target.dataset.marketAction;if(action==='add-area'){const rows=document.getElementById('coverage-rows');if(rows.children.length<20)rows.insertAdjacentHTML('beforeend',areaRow());return;}if(action==='remove-area'){target.closest('.coverage-row').remove();return;}if(action==='page'){const q=params();q.set('page',target.dataset.page);A().navigate(path()+'?'+q);return;}if(action.startsWith('offer-'))perform(async()=>await changed(await A().api('/companies/current/offers/'+encodeURIComponent(target.dataset.id)+'/actions','POST',{revision:Number(target.dataset.revision),action:action.slice(6)})));});
   // The marketing homepage has no catalogue data to refresh. Preserve its focused controls.
-  window.addEventListener('focus',()=>{if(path()!=='/'&&(publicPaths.includes(path())||window.Experience&&Experience.isStorefront(path()))&&!A().isDemo()&&!document.querySelector('main form')){A().invalidate();render();}});
+  window.addEventListener('focus',()=>{if(path()!=='/'&&(publicPaths.includes(path())||window.Experience&&Experience.isStorefront(path()))&&!A().isDemo()&&!document.querySelector('main form,#onboarding-dialog[open]')){A().invalidate();render();}});
   return {page,offerCard,isPublic:p=>publicPaths.includes(p)};
 })();

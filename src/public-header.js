@@ -44,10 +44,10 @@ const PublicHeader = (() => {
   function journey() {
     const customer = Account.user ? '/customer/dashboard' : Journey.authPath('/register?journey=customer');
     const distributor = Account.user ? '/distributor/onboarding' : '/register?journey=distributor';
-    return `<dialog class="ph-journey" id="ph-journey" aria-labelledby="ph-journey-title" aria-describedby="ph-journey-intro"><div class="ph-journey-top"><p class="ph-caption">YOUR NEXT CHAPTER</p><button type="button" class="ph-close" data-ph-dismiss aria-label="Close journey selector">${icon('close')}</button></div><h2 id="ph-journey-title">Where would you<br>like to begin?</h2><p id="ph-journey-intro">Choose your next step. You can explore the marketplace before creating an account.</p><div class="ph-choices">${link(customer, `<span class="ph-choice-icon">${icon('sun')}</span><span><strong>I want solar for my home or business</strong><small>${Account.user ? 'Open your customer workspace.' : 'Create a personal customer account.'}</small></span>${icon('arrow')}`, 'ph-choice')}${link(distributor, `<span class="ph-choice-icon">${icon('box')}</span><span><strong>I’m a solar distributor</strong><small>${Account.user ? 'Set up your distributor company.' : 'Create an account, then set up your company.'}</small><b>Distributor onboarding</b></span>${icon('arrow')}`, 'ph-choice ph-choice-business')}</div><div class="ph-journey-bottom">${link('/products', 'Explore solar first', 'ph-secondary-link')}<button type="button" data-ph-dismiss class="ph-cancel">Cancel</button></div><p class="ph-journey-note">Installer or dealer? ${link('/distributor', 'Explore the shared business overview.')} Separate onboarding journeys are not yet available.</p></dialog>`;
+    return `<dialog class="ph-journey" id="ph-journey" aria-labelledby="ph-journey-title" aria-describedby="ph-journey-intro"><div class="ph-journey-top"><p class="ph-caption">YOUR NEXT CHAPTER</p><button type="button" class="ph-close" data-ph-dismiss aria-label="Close journey selector">${icon('close')}</button></div><h2 id="ph-journey-title">Where would you<br>like to begin?</h2><p id="ph-journey-intro">Choose your next step. You can explore the marketplace before creating an account.</p><div class="ph-choices">${link(customer, `<span class="ph-choice-icon">${icon('sun')}</span><span><strong>I want solar for my home or business</strong><small>${Account.user ? 'Open your customer workspace.' : 'Create a personal customer account.'}</small></span>${icon('arrow')}`, 'ph-choice').replace('<a ', '<a data-onboarding="customer" ')}${link(distributor, `<span class="ph-choice-icon">${icon('box')}</span><span><strong>I’m a solar distributor</strong><small>${Account.user ? 'Set up your distributor company.' : 'Create an account, then set up your company.'}</small><b>Distributor onboarding</b></span>${icon('arrow')}`, 'ph-choice ph-choice-business').replace('<a ', '<a data-onboarding="distributor" ')}</div><div class="ph-journey-bottom">${link('/products', 'Explore solar first', 'ph-secondary-link')}<button type="button" data-ph-dismiss class="ph-cancel">Cancel</button></div><p class="ph-journey-note">Installer or dealer? ${link('/distributor', 'Explore the shared business overview.')} Separate onboarding journeys are not yet available.</p></dialog>`;
   }
   function markup() {
-    return `<header class="public-header ph-header"><div class="ph-inner">${link('/', logo(), 'brand ph-brand')}<div id="ph-navigation" class="ph-navigation"><div class="ph-mobile-top"><span id="ph-mobile-title">Explore MY Solar Solutions</span><button type="button" class="ph-close" data-ph-mobile-close aria-label="Close navigation">${icon('close')}</button></div><nav class="ph-nav" aria-label="Public navigation">${definitions.map(group).join('')}</nav><div class="ph-actions">${login()}${startButton()}</div></div>${startButton('ph-compact-start')}<button type="button" class="ph-menu-toggle" aria-label="Open navigation" aria-controls="ph-navigation" aria-expanded="false" data-ph-mobile>${icon('menu')}<span>Menu</span></button></div><button type="button" class="ph-scrim" data-ph-mobile-close aria-label="Close navigation" tabindex="-1" hidden></button></header>${journey()}`;
+    return `<header class="public-header ph-header"><div class="ph-inner">${link('/', logo(), 'brand ph-brand')}<div id="ph-navigation" class="ph-navigation"><div class="ph-mobile-top"><span id="ph-mobile-title">Explore MY Solar Solutions</span><button type="button" class="ph-close" data-ph-mobile-close aria-label="Close navigation">${icon('close')}</button></div><nav class="ph-nav" aria-label="Public navigation">${definitions.map(group).join('')}</nav><div class="ph-actions">${login()}${startButton()}</div></div>${startButton('ph-compact-start')}<button type="button" class="ph-menu-toggle" aria-label="Open navigation" aria-controls="ph-navigation" aria-expanded="false" data-ph-mobile>${icon('menu')}<span>Menu</span></button></div><button type="button" class="ph-scrim" data-ph-mobile-close aria-label="Close navigation" tabindex="-1" hidden></button></header>${journey()}${Onboarding.markup()}`;
   }
 
   function panels() { return [...document.querySelectorAll('.ph-panel')]; }
@@ -99,6 +99,7 @@ const PublicHeader = (() => {
     document.body.classList.remove('ph-journey-lock');
   }
   function cleanup() {
+    Onboarding.cleanup();
     controller?.abort();
     controller = null;
     cancelAnimationFrame(scrollFrame);
@@ -114,8 +115,11 @@ const PublicHeader = (() => {
     controller = new AbortController();
     const { signal } = controller;
     const dialog = document.getElementById('ph-journey');
+    Onboarding.mount({chooseAudience:()=>{document.body.classList.add('ph-journey-lock');dialog.showModal();}});
     const focusable = root => [...root.querySelectorAll('a[href],button,select')].filter(node => !node.disabled && node.getClientRects().length && !node.closest('[hidden]'));
     document.addEventListener('click', event => {
+      const choice=event.target.closest('[data-onboarding]');
+      if(choice&&!Account.user){event.preventDefault();closeJourney();Onboarding.open(choice.dataset.onboarding,opener);return;}
       const trigger = event.target.closest('[data-ph-group]');
       if (trigger) { toggleGroup(trigger); return; }
       if (event.target.closest('[data-ph-mobile]')) { setMobile(!mobile); return; }
@@ -178,6 +182,7 @@ const PublicHeader = (() => {
     document.addEventListener('focusin', event => { if (!header.contains(event.target)) closeGroups(); }, { signal });
     dialog.addEventListener('close', () => {
       document.body.classList.remove('ph-journey-lock');
+      if(Onboarding.isOpen())return;
       if (opener?.isConnected && opener.getClientRects().length) opener.focus({ preventScroll: true });
       else header.querySelector('[data-ph-mobile]')?.focus({ preventScroll: true });
     }, { signal });

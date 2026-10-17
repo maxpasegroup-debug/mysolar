@@ -12,6 +12,7 @@
     "build": "node scripts/check.mjs",
     "test": "node --test",
     "test:db": "node --test tests/database.test.mjs",
+    "test:localdb": "node scripts/verify-postgres.mjs",
     "test:browser": "node scripts/browser-check.mjs",
     "start": "node --env-file-if-exists=.env server/index.js",
     "dev": "node --env-file-if-exists=.env --watch server/index.js",

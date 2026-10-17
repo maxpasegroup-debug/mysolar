@@ -22,7 +22,7 @@ window.Account = (() => {
     let data;try{data=await response.json();}catch{throw new Error('The account service is unavailable. Start the Node.js application and configure PostgreSQL.');}
     if(!response.ok) {
       if(response.status===401){state={...state,user:null,activeCompany:null,permissions:[]};resources.clear();}
-      if(['CSRF_REJECTED','ACCOUNT_CONTEXT_CHANGED'].includes(data.error?.code))void refresh();
+      if(['CSRF_REJECTED','ACCOUNT_CONTEXT_CHANGED'].includes(data.error?.code))void refresh({preserveForm:Boolean(document.querySelector('[data-onboarding-form]'))});
       const error=new Error(data.error?.message||'This request could not be completed.');error.code=data.error?.code;throw error;
     }
     return data;
@@ -30,13 +30,13 @@ window.Account = (() => {
   let lastSessionAt=0;
   async function refresh(options={}) {
     if(pending)return pending;
-    const preserve=options.preserveForm&&Boolean(document.querySelector('main form')),previous=state;
+    const preserve=options.preserveForm&&Boolean(document.querySelector('main form,[data-onboarding-form]')),previous=state;
     const epoch=preserve?generation:++generation;let retained=false;
     if(!preserve){resources.clear();state.loading=true;}
     pending=(async()=>{
       try {const data=await api('/auth/session');if(epoch===generation){retained=preserve&&previous.user?.id===data.user?.id&&previous.activeCompany?.id===data.activeCompany?.id&&previous.activeCompany?.lifecycle===data.activeCompany?.lifecycle&&JSON.stringify(previous.permissions||[])===JSON.stringify(data.permissions||[])&&JSON.stringify(previous.customerPermissions||[])===JSON.stringify(data.customerPermissions||[])&&JSON.stringify(previous.platformPermissions||[])===JSON.stringify(data.platformPermissions||[]);if(preserve&&!retained){++generation;resources.clear();}state={...data,loading:false,error:''};lastSessionAt=Date.now();if(window.Organization)Organization.sessionChanged(previous,state);if(window.Journey)Journey.sessionChanged(previous,state);}}
       catch(error){if(epoch===generation)state={loading:false,error:error.message,user:null,companies:[],activeCompany:null,permissions:[],customerPermissions:[],csrfToken:''};}
-      finally{pending=null;if(!retained&&typeof render==='function')render();}
+      finally{pending=null;if(!retained&&!options.deferRender&&typeof render==='function')render();}
     })();
     return pending;
   }
@@ -61,7 +61,14 @@ window.Account = (() => {
     if(state.user)return accountFrame('You’re signed in.','Choose where you’d like to go next.',`<h2>${e(state.user.name)}</h2><p class="muted">${e(state.user.email)}</p><div class="account-actions">${link(distributor?'/companies':'/customer/dashboard','Open your workspace '+icon('arrow'),'btn primary')}${link('/distributor/onboarding','Register a company','btn secondary')}<button class="btn secondary" data-account-action="logout">Sign out</button></div>`);
     return accountFrame('Good to have<br>you here.',distributor?'Sign in, then choose an authorized company workspace.':'Your personal solar journey starts here.',`<h2>${distributor?'Distributor':'Customer'} sign in</h2>${state.error?`<p class="account-feedback" role="alert">${e(state.error)}</p>`:''}${form('account-login',field('Email address','email','email','','required autocomplete="username" maxlength="254"')+field('Password','password','password','','required autocomplete="current-password" minlength="12" maxlength="128"'),'Sign in')}<div class="account-links">${link(Journey.authPath('/recover'),'Forgot password?','text-link')}${link(Journey.authPath(`/register?journey=${distributor?'distributor':'customer'}`),'Create an account','text-link')}</div><div class="divider">FICTIONAL UI PREVIEW</div>${link(`${distributor?'/distributor':'/customer'}/dashboard?demo=1`,'Explore without an account','btn secondary')}<p class="fine-print">Demo mode does not sign you in or grant access to private data.</p>`);
   }
-  function registerPage(){if(state.user)return loginPage();return accountFrame('A brighter<br>beginning.','Create your personal MY SOLAR account. Company setup is a separate, signed-in step.',`<h2>Create your account</h2>${form('account-register',field('Your name','name','text','','required autocomplete="name" maxlength="100"')+field('Email address','email','email','','required autocomplete="email" maxlength="254"')+field('Password · 12–128 characters','password','password','','required autocomplete="new-password" minlength="12" maxlength="128"'),'Create account')}${link(Journey.authPath('/customer/login'),'Already registered? Sign in','text-link')}<p class="fine-print">Registration creates a customer profile. It does not grant company or platform administrator privileges.</p>`);}
+  function registerPage(){
+    if(state.user)return loginPage();
+    const distributor=new URLSearchParams(location.hash.split('?')[1]||'').get('journey')==='distributor';
+    const title=distributor?'Build your solar<br>business with us.':'A brighter<br>beginning.';
+    const description=distributor?'Your personal account is the first step. Company setup follows after you sign in.':'Start your solar journey with MY Solar Solutions. Create your account and discover the possibilities.';
+    const label=distributor?'Create distributor account':'Create customer account';
+    return accountFrame(title,description,`<h2>${label}</h2>${form('account-register',field('Your name','name','text','','required autocomplete="name" maxlength="100"')+field('Email address','email','email','','required autocomplete="email" maxlength="254"')+field('Password · 12–128 characters','password','password','','required autocomplete="new-password" minlength="12" maxlength="128"'),label)}${link(distributor?'/distributor/login?journey=distributor':Journey.authPath('/customer/login'),'Already registered? Log in','text-link')}<p class="fine-print">${distributor?'Registration creates a personal account. Company setup, ownership and approval remain separate.':'Registration creates a customer profile. It grants no company or platform administrator privileges.'}</p>`);
+  }
   function recoveryPage(reset=false){return accountFrame(reset?'A fresh start.':'Let’s help you<br>find your way back.',reset?'Use the one-time link provided to your email address.':'Recovery availability depends on the platform’s email configuration.',`<h2>${reset?'Reset your password':'Password recovery'}</h2>${!reset&&!state.recoveryAvailable?'<p class="info-callout">Email recovery is not configured. No email will be sent.</p>':''}${reset&&!resetToken?'<p class="account-feedback">Open a valid reset link from your email. Tokens are not displayed here.</p>':form(reset?'account-reset':'account-recover',reset?field('New password · 12–128 characters','password','password','','required autocomplete="new-password" minlength="12" maxlength="128"'):field('Account email address','email','email','','required autocomplete="email" maxlength="254"'),reset?'Change password':'Request recovery')}${link(Journey.authPath('/customer/login'),'Back to sign in','text-link')}`);}
   function onboarding(){
     if(!state.user)return accountFrame('Your business.<br>A new chapter.','Sign in or create a personal account before registering your company.',`<h2>Set up your distributor company</h2><p class="muted">The server creates the company and its initial owner together. Selecting a role never grants ownership.</p>${link('/distributor/login','Sign in to continue '+icon('arrow'),'btn primary')}${link('/register?journey=distributor','Create an account','text-link')}`);
@@ -120,6 +127,25 @@ window.Account = (() => {
   function channel(p,original){return p.startsWith('/platform')?'public':isPrivate(p)&&!isDemo()&&(state.loading||state.error||!state.user||(!p.startsWith('/customer/')&&!state.activeCompany))?'public':original;}
   function person(){return {name:isDemo()?'Demo workspace':state.user?.name||'Your account',role:isDemo()?'Fictional preview':state.activeCompany?.role_label||'Customer'};}
   function navigate(target){if(location.hash===`#${target}`)render();else location.hash=target;}
+  async function createPersonalAccount(data,audience,options={}) {
+    if(!['customer','distributor'].includes(audience))throw new Error('Choose a supported onboarding journey.');
+    if(pending)await pending;
+    const destination=Journey.destination();
+    if(state.user)return {created:false,signedIn:true,next:audience==='distributor'?'/distributor/onboarding':destination||'/customer/dashboard'};
+    if(!state.csrfToken)throw new Error(state.error||'Your security session is unavailable. Refresh the page before continuing.');
+    await api('/auth/register','POST',{name:data.name,email:data.email,password:data.password});
+    await refresh({...options,deferRender:options.deferRender&&Boolean(document.querySelector('[data-onboarding-form]'))});
+    const signedIn=Boolean(state.user)&&!state.error;
+    const next=signedIn?(Organization.hasInvitation()?'/invitation':audience==='distributor'?'/distributor/onboarding':destination||'/customer/dashboard'):
+      audience==='distributor'?'/distributor/login?journey=distributor':Journey.authPath('/customer/login');
+    return {created:true,signedIn,next};
+  }
+  async function registerFromModal(data,audience) {
+    if(submitting)throw new Error('Another account request is already in progress. Please wait.');
+    submitting=true;
+    try{return await createPersonalAccount(data,audience,{deferRender:true});}
+    finally{submitting=false;}
+  }
   async function run(action,formElement){
     if(submitting)return;submitting=true;flash='';const submit=formElement?.querySelector('button[type="submit"],button:not([type])');if(submit)submit.disabled=true;
     try{await action();}
@@ -132,8 +158,8 @@ window.Account = (() => {
     void run(async()=>{
       if(pending)await pending;
       if(!state.csrfToken)throw new Error(state.error||'Refresh your security session before continuing.');
-      if(f.id==='account-login'){const destination=isPrivate(path())?location.hash.slice(1):path().startsWith('/distributor')?null:Journey.destination();await api('/auth/login','POST',data);await refresh();navigate(Organization.hasInvitation()?'/invitation':destination||(path().startsWith('/distributor')?'/companies':'/customer/dashboard'));}
-      else if(f.id==='account-register'){const journey=new URLSearchParams(location.hash.split('?')[1]||'').get('journey'),destination=Journey.destination();await api('/auth/register','POST',data);await refresh();navigate(Organization.hasInvitation()?'/invitation':journey==='distributor'?'/distributor/onboarding':destination||'/customer/dashboard');}
+      if(f.id==='account-login'){const onboarding=path()==='/distributor/login'&&new URLSearchParams(location.hash.split('?')[1]||'').get('journey')==='distributor';const destination=onboarding?'/distributor/onboarding':isPrivate(path())?location.hash.slice(1):path().startsWith('/distributor')?null:Journey.destination();await api('/auth/login','POST',data);await refresh();navigate(Organization.hasInvitation()?'/invitation':destination||(path().startsWith('/distributor')?'/companies':'/customer/dashboard'));}
+      else if(f.id==='account-register'){const journey=new URLSearchParams(location.hash.split('?')[1]||'').get('journey');const result=await createPersonalAccount(data,journey==='distributor'?'distributor':'customer');navigate(result.next);}
       else if(f.id==='account-recover'){const result=await api('/auth/recover','POST',data);flash=result.message;render();}
       else if(f.id==='account-reset'){const result=await api('/auth/reset-password','POST',{...data,token:resetToken});resetToken='';await refresh();flash=result.message;navigate('/customer/login');}
       else if(f.id==='account-company-create'){await api('/companies','POST',data);await refresh();navigate('/distributor/setup?step=profile');}
@@ -159,5 +185,6 @@ window.Account = (() => {
   window.addEventListener('hashchange',()=>{captureReset();if(window.Marketplace&&Marketplace.isPublic(path())||window.Experience&&Experience.isStorefront(path()))resources.clear();if(!isDemo()&&(authPaths.includes(path())||isPrivate(path()))&&Date.now()-lastSessionAt>30000)void refresh();});
   window.addEventListener('focus',()=>{if(!isDemo()&&(isPrivate(path())||authPaths.includes(path()))&&Date.now()-lastSessionAt>15000)void refresh({preserveForm:true});});
   return {init:refresh,page,channel,isDemo,navAllowed,person,api,refresh,resource,run,navigate,feedback,form,field,roleLabel,invalidate(){resources.clear();},
+    registerCustomer:data=>registerFromModal(data,'customer'),registerDistributor:data=>registerFromModal(data,'distributor'),
     setMessage(message){flash=message;},get session(){return state;},get user(){return state.user;},get activeCompany(){return state.activeCompany;}};
 })();

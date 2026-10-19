@@ -28,10 +28,16 @@ test('shared team/customer invitations, ownership, service and Boss overview', {
   };
   await t.test('all supported employee roles can use private sharing without SMTP',async()=>{
    const team=await owner.request('/companies/current/team');assert.equal(team.data.available,true);assert.equal(team.data.emailAvailable,false);
-   assert.deepEqual(team.data.assignableRoles,['sales','supervisor','field_engineer','inventory_manager','accounts']);
-   for(const role of team.data.assignableRoles){const r=await owner.request('/companies/current/invitations','POST',{email:role==='sales'?staff.user.email:role+'@example.invalid',role,delivery:'share'});assert.equal(r.status,201,JSON.stringify(r.data));assert.equal(r.data.kind,'employee');if(role==='sales')employeeToken=token(r);}
+   const ordinaryRoles=['sales','supervisor','field_engineer','inventory_manager','accounts'];
+   assert.deepEqual(team.data.assignableRoles,[...ordinaryRoles,'part_time_sales']);
+   const denied=await owner.request('/companies/current/invitations','POST',{email:'part_time_sales@example.invalid',role:'part_time_sales',delivery:'share'});assert.equal(denied.status,403);assert.equal(denied.data.error.code,'PRO_REQUIRED');
+   for(const role of ordinaryRoles){const r=await owner.request('/companies/current/invitations','POST',{email:role==='sales'?staff.user.email:role+'@example.invalid',role,delivery:'share'});assert.equal(r.status,201,JSON.stringify(r.data));assert.equal(r.data.kind,'employee');if(role==='sales')employeeToken=token(r);}
    const rows=await owner.request('/companies/current/invitations');assert.ok(!JSON.stringify(rows.data).includes(employeeToken));assert.ok(rows.data.invitations.every(i=>i.delivery==='share'));
    assert.equal((await owner.request('/companies/current/invitations','POST',{email:'mail@example.invalid',role:'sales',delivery:'email'})).status,503);
+  });
+  await t.test('unconfigured recovery is honest and does not create or expose reset tokens',async()=>{
+   for(const email of [customer.user.email,'unknown-recovery@example.invalid']){const r=await customer.request('/auth/recover','POST',{email});assert.equal(r.status,503);assert.equal(r.data.error.code,'RECOVERY_UNAVAILABLE');}
+   assert.equal((await db.query('SELECT count(*)::int AS n FROM password_reset_tokens')).rows[0].n,0);
   });
   await t.test('team invitation is recipient-bound, single-use and enforces the selected role',async()=>{
    assert.equal((await customer.request('/invitations/preview','POST',{token:employeeToken,kind:'employee'})).status,400);
@@ -92,8 +98,8 @@ test('shared team/customer invitations, ownership, service and Boss overview', {
    const invoice=randomUUID();await db.query("INSERT INTO customer_invoices(id,company_id,order_id,contact_id,reference,snapshot,total_paise,issue_date,due_date,status) VALUES($1,$2,$3,$4,'TEST-INVOICE','{}',10000,current_date-3,current_date-1,'issued')",[invoice,companyId,orderId,contactId]);
    await db.query("INSERT INTO business_tasks(id,company_id,title,assignee_id,priority,due_date) VALUES($1,$2,'TEST TEAM TASK',$3,'normal',current_date-1)",[randomUUID(),companyId,staff.user.id]);
    await db.query("INSERT INTO business_tasks(id,company_id,title,assignee_id,priority,due_date) VALUES($1,$2,'OTHER COMPANY SECRET',$3,'normal',current_date-1)",[randomUUID(),otherId,other.user.id]);
-   const r=await owner.request('/companies/current/operations/dashboard');assert.equal(r.status,200);assert.equal(r.data.outstanding,'10000');assert.ok(JSON.stringify(r.data).includes('TEST TEAM TASK'));assert.ok(JSON.stringify(r.data).includes('TEST-INVOICE'));assert.ok(!JSON.stringify(r.data).includes('OTHER COMPANY SECRET'));
-   const restricted=await staff.request('/companies/current/operations/dashboard');assert.equal(restricted.status,200);assert.equal(restricted.data.outstanding,null);assert.ok(!restricted.data.priorities.some(p=>p.kind==='invoices'));
+   const r=await owner.request('/companies/current/operations/dashboard');assert.equal(r.status,200);assert.equal(r.data.outstanding,'10000');assert.ok(r.data.gettingStarted.customers>=1);assert.ok(r.data.gettingStarted.employees>=1);assert.ok(JSON.stringify(r.data).includes('TEST TEAM TASK'));assert.ok(JSON.stringify(r.data).includes('TEST-INVOICE'));assert.ok(!JSON.stringify(r.data).includes('OTHER COMPANY SECRET'));
+   const restricted=await staff.request('/companies/current/operations/dashboard');assert.equal(restricted.status,200);assert.equal(restricted.data.outstanding,null);assert.equal(restricted.data.gettingStarted.employees,undefined);assert.ok(!restricted.data.priorities.some(p=>p.kind==='invoices'));
    assert.equal((await owner.request('/companies/current/operations/dashboard','GET',undefined,{'X-Company-ID':otherId})).status,409);
   });
  }finally{if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}if(pool)await pool.end();await db.query('DROP SCHEMA "'+schema+'" CASCADE');await db.end();}

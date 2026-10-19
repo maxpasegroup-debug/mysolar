@@ -1,5 +1,19 @@
 # MY SOLAR deployment runbook
 
+## Current Phase 11 execution — 18 October 2026
+
+Isolated staging now exists and is deployed. Follow [OPERATIONS_RUNBOOK.md](OPERATIONS_RUNBOOK.md) and the current section of [PHASE_11_STAGING_ACCEPTANCE_HANDOFF.md](PHASE_11_STAGING_ACCEPTANCE_HANDOFF.md) for exact identifiers, private access, migrations, rollback and recovery evidence. Effective staging deployment settings now contain the pre-deploy migration command and `/readyz`; production was not changed. Actual restore and failed-health-gate drills passed. Resend recipient/sender/key, real email delivery, continuous alerts and extended staging acceptance are still blockers. Do not advance to real onboarding or production release.
+
+## Historical Phase 11 preparation notice — 17 October 2026
+
+Read [PHASE_11_STAGING_ACCEPTANCE_HANDOFF.md](PHASE_11_STAGING_ACCEPTANCE_HANDOFF.md) before using the historical procedures below. This is now a Git repository, the Phase 10 local PostgreSQL verification passed, and read-only Railway inspection found exactly one environment: **production**. No isolated staging target is available. Do not issue an implicit `railway up`, push the production-connected branch, or run migrations against the linked environment for this rehearsal.
+
+The active deployment's metadata still has null pre-deploy and health-check values despite file-property mappings for the repository's `railway.json`. Its successful status does not prove migration execution or readiness gating. A new staging service needs explicit build/start/pre-deploy/health settings and verified execution evidence. Current [Railway documentation](https://docs.railway.com/config-as-code) disallows new-service opt-in to legacy config files; no production configuration was changed to investigate this discrepancy.
+
+Local preparation: `node scripts/prepare-staging.mjs` generates a hash-inventoried candidate under ignored `.verification/staging-releases/`. It does not upload, load credentials or connect to a database. The manifest records required service settings; they must be applied only to an explicitly authorized isolated staging target. Staging email needs its own approved credentials, sender and restricted recipient list. Staging acceptance and real onboarding remain blocked.
+
+## Historical preparation notes (superseded where inconsistent above)
+
 Status: preparation only. No Railway project/environment has been selected or inspected remotely, no deployment or production migration has run, and `mysolar.online` has not been connected. PostgreSQL integration verification is a release blocker; see `PHASE_10_HANDOFF.md`.
 
 ## Release prerequisites

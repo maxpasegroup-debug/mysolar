@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "approval": {"reference": null, "approvedAt": null},
+  "window": {"start": null, "end": null},
+  "companyIds": [],
+  "customerIds": [],
+  "participantIds": []
+}

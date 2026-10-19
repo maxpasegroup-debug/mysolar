@@ -10,6 +10,12 @@ const base=resolve('.verification/postgres');
 const bin=resolve(process.env.POSTGRES_BIN||resolve(base,'pgsql/bin'));
 const executable=name=>resolve(bin,name+(process.platform==='win32'?'.exe':''));
 for(const name of ['postgres','initdb','pg_ctl'])await access(executable(name));
+// Optional explicit filenames allow focused regression runs using the same safe
+// cluster lifecycle. Unknown paths cannot escape the test directory.
+const available=(await readdir(resolve('tests'))).filter(name=>name.endsWith('.test.mjs'));
+const requested=process.argv.slice(2);
+if(requested.some(name=>!available.includes(name)))throw new Error('Choose existing test filenames from tests/.');
+const specs=(requested.length?requested:available).map(name=>resolve('tests',name));
 const cluster=resolve(base,'cluster-'+randomUUID());
 if(!cluster.startsWith(base+'\\')&&!cluster.startsWith(base+'/'))throw new Error('Invalid test cluster path');
 await mkdir(cluster,{recursive:true});
@@ -26,8 +32,9 @@ try{
  const db=new pg.Client({connectionString:connection.href,connectionTimeoutMillis:5000});await db.connect();try{await db.query('CREATE DATABASE mysolar_test_phase1');}finally{await db.end();}
  connection.pathname='/mysolar_test_phase1';
  process.stdout.write('Isolated local PostgreSQL ready. Running tests; credentials are kept in memory.\n');
- const specs=(await readdir(resolve('tests'))).filter(name=>name.endsWith('.test.mjs')).map(name=>resolve('tests',name));
- const result=spawnSync(process.execPath,['--test',...specs],{windowsHide:true,stdio:'inherit',env:{...process.env,TEST_DATABASE_URL:connection.href}});
+ const testEnv={...process.env,NODE_ENV:'test',DATABASE_URL:connection.href,TEST_DATABASE_URL:connection.href,SIA_PROVIDER:'disabled'};
+ for(const name of ['RESEND_API_KEY','SMTP_HOST','SMTP_USER','SMTP_PASSWORD','MAIL_FROM','SIA_API_KEY','SIA_PROVIDER_URL','SIA_MODEL','SESSION_SECRET','STAGING_MODE','STAGING_ACCESS_USER','STAGING_ACCESS_PASSWORD','STAGING_EMAIL_RECIPIENTS'])delete testEnv[name];
+ const result=spawnSync(process.execPath,['--test',...specs],{windowsHide:true,stdio:'inherit',env:testEnv});
  process.exitCode=result.status??1;
 }finally{
  if(started)run('pg_ctl',['-D',cluster,'-m','fast','-w','stop']);

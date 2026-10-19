@@ -5,7 +5,7 @@ const select={contacts:'r.id,r.name,r.kind,r.email,r.phone,r.user_id,r.revision'
 operations.get('/list/:kind',async(req,res)=>{const kind=req.params.kind,q=c.filter(req.query);res.json(await c.context(req,async(db,ctx)=>{c.readPermission(ctx,kind);const b=new c.Bindings(),where=c.scope(ctx,kind,b);if(q.search)where.push(`r.${c.definitions[kind][3]} ILIKE '%'||${b.add(q.search)}||'%'`);if(q.status){if(kind==='leads')where.push(`r.stage=${b.add(q.status)}`);else if(['orders','purchases','projects','tasks','invoices','service'].includes(kind))where.push(`r.status=${b.add(q.status)}`);}if(q.assignee&&['leads','tasks','service'].includes(kind))where.push(`r.assignee_id=${b.add(q.assignee)}`);if(q.priority&&['leads','tasks','service'].includes(kind))where.push(`r.priority=${b.add(q.priority)}`);return {...await c.paged(db,select[kind],`FROM ${c.definitions[kind][0]} r`,where.join(' AND '),b,q.page,'r.created_at DESC,r.id'),permissions:ctx.permissions};}));});
 operations.get('/options',async(req,res)=>{c.v.body(req.query,['type','search','page'],[]);const type=c.v.text(req.query.type,'option type',30),q=c.filter({search:req.query.search??'',page:req.query.page??'1'});res.json(await c.context(req,async(db,ctx)=>{let from,fields,where,order='r.id',b=new c.Bindings();const company=b.add(ctx.companyId),search=b.add(q.search);const any=permissions=>{if(!permissions.some(p=>c.has(ctx,p)))throw new Error('OPTIONS_DENIED');};
  try{
-  if(type==='employees'){any(['crm.manage','orders.manage','projects.manage','tasks.manage','service.manage']);from='FROM company_memberships m JOIN users r ON r.id=m.user_id';fields='r.id,r.display_name AS label,m.role_id AS role';where=`m.company_id=${company} AND m.status='active' AND r.status='active' AND r.display_name ILIKE '%'||${search}||'%'`;order='r.display_name,r.id';}
+  if(type==='employees'){any(['crm.manage','orders.manage','projects.manage','tasks.manage','service.manage']);from='FROM company_memberships m JOIN users r ON r.id=m.user_id';fields='r.id,r.display_name AS label,m.role_id AS role';where=`m.company_id=${company} AND m.status='active' AND r.status='active' AND r.display_name ILIKE '%'||${search}||'%' AND (m.role_id<>${b.add(PART_TIME_ROLE)} OR ${b.add((await growthAccess(db,ctx.companyId)).enabled)}::boolean)`;order='r.display_name,r.id';}
   else if(type==='enquiries'){c.permit(ctx,'crm.manage');c.permit(ctx,'leads.read');from='FROM customer_enquiries r JOIN enquiry_recipients x ON x.enquiry_id=r.id';fields='r.id,r.title AS label';where=`x.company_id=${company} AND r.title ILIKE '%'||${search}||'%'`;}
   else if(type==='quotes'){c.permit(ctx,'orders.manage');from='FROM quotation_versions r';fields="r.id,r.reference||' · v'||r.version AS label";where=`r.company_id=${company} AND r.status='sent' AND NOT r.estimated AND r.tax_mode<>'unknown' AND r.valid_until>=(now() AT TIME ZONE 'Asia/Kolkata')::date AND r.reference ILIKE '%'||${search}||'%'`;}
   else if(type==='order_items'){c.permit(ctx,'inventory.manage');from='FROM business_order_items r JOIN business_orders o ON o.id=r.order_id AND o.company_id=r.company_id';fields="r.id,o.reference||' · '||r.description||' · '||(r.quantity_milli::numeric/1000)::text||' '||r.unit AS label";where=`r.company_id=${company} AND o.status IN ('confirmed','processing','partially_fulfilled') AND (o.reference ILIKE '%'||${search}||'%' OR r.description ILIKE '%'||${search}||'%')`;}
@@ -53,9 +53,20 @@ async function priorityWork(db,ctx){
  }
  return groups;
 }
+async function gettingStarted(db,ctx){
+ const result={};
+ for(const [key,kind] of [['customers','contacts'],['leads','leads']]){
+  try{c.readPermission(ctx,kind);}catch{continue;}
+  const b=new c.Bindings(),where=c.scope(ctx,kind,b);
+  result[key]=(await db.query(`SELECT count(*)::int AS count FROM ${c.definitions[kind][0]} r WHERE ${where.join(' AND ')}`,b.values)).rows[0].count;
+ }
+ if(c.has(ctx,'quotations.read'))result.quotations=(await db.query('SELECT count(*)::int AS count FROM quotation_versions WHERE company_id=$1',[ctx.companyId])).rows[0].count;
+ if(c.has(ctx,'members.read'))result.employees=(await db.query("SELECT count(*)::int AS count FROM company_memberships WHERE company_id=$1 AND role_id<>'owner' AND status='active'",[ctx.companyId])).rows[0].count;
+ return result;
+}
 operations.get('/dashboard',async(req,res)=>{res.json(await c.context(req,async(db,ctx)=>{
  const data=await businessOverview(db,ctx);
  let outstanding=null;
  if(c.has(ctx,'finance.read'))outstanding=(await db.query("SELECT coalesce(sum(greatest(0,i.total_paise-(SELECT coalesce(sum(x.amount_paise),0) FROM customer_collections x WHERE x.company_id=i.company_id AND x.invoice_id=i.id))),0)::text AS amount FROM customer_invoices i WHERE i.company_id=$1 AND i.status='issued'",[ctx.companyId])).rows[0].amount;
- return {...data,priorities:await priorityWork(db,ctx),outstanding,asOf:new Date().toISOString(),scope:'Current saved records for this company and your authorized assignments. Due dates use India time. Counts cover recorded history; priority lists show up to four records per section.'};
+ return {...data,gettingStarted:await gettingStarted(db,ctx),priorities:await priorityWork(db,ctx),outstanding,asOf:new Date().toISOString(),scope:'Current saved records for this company and your authorized assignments. Due dates use India time. Counts cover recorded history; priority lists show up to four records per section.'};
 }));});

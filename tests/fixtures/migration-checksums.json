@@ -26,5 +26,21 @@
   {
     "file": "server/db/migrations/008_commercial.sql",
     "sha256": "3d50ba531ef82d23a2198c13c74dd19556b2a57b1eb7ebd3cac8d8a79c39dce7"
+  },
+  {
+    "file": "server/db/migrations/009_shared_invitations.sql",
+    "sha256": "aaa630b02ade28916b96ebb9b215381f52e4297f72724da0c88c163d8c232da6"
+  },
+  {
+    "file": "server/db/migrations/010_domain_registry.sql",
+    "sha256": "3080052aa75a4128cea62ffc924ca0d285857242c1b2d38064b9552e80a0c05e"
+  },
+  {
+    "file": "server/db/migrations/011_pro_network.sql",
+    "sha256": "8a24af7e8e8bdefef2d8e2ca604f555ec899bd81e8812af273b506db376b0ad0"
+  },
+  {
+    "file": "server/db/migrations/012_automation.sql",
+    "sha256": "b18ef4486af570ae26cdb304931d879f7fdad7beb1a30f9a8954a557829edad9"
   }
 ]

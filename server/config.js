@@ -1,3 +1,4 @@
+import {mailSettings} from './mail-config.js';
 function integer(name, fallback, min, max) {
   const value = Number(process.env[name] ?? fallback);
   if (!Number.isInteger(value) || value < min || value > max) throw new Error(`Invalid ${name}`);
@@ -19,6 +20,7 @@ const productImageHosts=(process.env.PRODUCT_IMAGE_ALLOWED_HOSTS||'').split(',')
 if(logoHosts.some(host=>! /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)))throw new Error('LOGO_ALLOWED_HOSTS must contain exact DNS hostnames');
 if(productImageHosts.some(host=>! /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/.test(host)))throw new Error('PRODUCT_IMAGE_ALLOWED_HOSTS must contain exact DNS hostnames');
 const invitationDelivery=process.env.INVITATION_DELIVERY||'email';
+const mail=mailSettings();
 if(!['email','manual'].includes(invitationDelivery)||(production&&invitationDelivery==='manual'))throw new Error('Manual invitations are restricted to development');
 export const config = Object.freeze({
   production, origin: origin.origin, secret,
@@ -30,15 +32,7 @@ export const config = Object.freeze({
   idleHours: integer('SESSION_IDLE_HOURS', 12, 1, 72),
   cookieName: production ? '__Host-mysolar_session' : 'mysolar_session',
   logoHosts:Object.freeze(logoHosts), productImageHosts:Object.freeze(productImageHosts), invitationDelivery,
-  mailEnabled: Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD && process.env.MAIL_FROM),
-  smtp: {
-    host: process.env.SMTP_HOST,
-    port: integer('SMTP_PORT', 587, 1, 65535),
-    secure: process.env.SMTP_SECURE === 'true',
-    requireTLS: process.env.SMTP_SECURE !== 'true',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD },
-    connectionTimeout: 10000, socketTimeout: 15000, greetingTimeout: 10000,
-    logger: false, debug: false
-  },
-  mailFrom: process.env.MAIL_FROM
+  mailEnabled: mail.enabled,
+  smtp: mail.smtp,
+  mailFrom: mail.from
 });

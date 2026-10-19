@@ -19,7 +19,9 @@
     "db:migrate": "node --env-file-if-exists=.env server/db/migrate.js",
     "db:cleanup": "node --env-file-if-exists=.env server/db/cleanup.js",
     "admin:grant": "node --env-file-if-exists=.env server/admin.js grant",
-    "admin:revoke": "node --env-file-if-exists=.env server/admin.js revoke"
+    "admin:revoke": "node --env-file-if-exists=.env server/admin.js revoke",
+    "worker:reminders": "node --env-file-if-exists=.env server/automation/worker.js",
+    "worker:reminders:once": "node --env-file-if-exists=.env server/automation/worker.js --once"
   },
   "dependencies": {
     "argon2": "0.44.0",

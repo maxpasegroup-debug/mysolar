@@ -1,5 +1,7 @@
 # Phase 11 staging acceptance — current execution, 18 October 2026
 
+> Historical acceptance record. On 19 October 2026 the owner requested a single root application and removal of staging tools. See [ROOT_DEPLOYMENT.md](ROOT_DEPLOYMENT.md). Prior observations below are preserved; they neither authorize execution of removed tools nor verify today's remote environment state. No Railway environment was deleted during consolidation.
+
 ## Current decision: PASS WITH BLOCKERS
 
 The controlled staging release, actual snapshot restore and recorded technical checks below passed. **The overall safe-operations milestone and real-onboarding readiness are NOT complete:** approved Resend sender/recipient/key, real email receipt, continuous alert configuration and verified alert receipt remain blocked. Some extended Phase 11 scenarios still have local integration evidence only. Do not interpret this decision as production or real-customer onboarding approval.

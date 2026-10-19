@@ -1,6 +1,7 @@
 .git/
 .railway/
 .verification/
+.pilot/
 .npm-cache/
 node_modules/
 .env

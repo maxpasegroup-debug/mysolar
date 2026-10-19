@@ -1,4 +1,7 @@
 import {mailSettings} from './mail-config.js';
+// Fail closed if an old private-environment configuration is accidentally reused.
+// The application no longer includes the removed staging access/mail boundaries.
+if(process.env.STAGING_MODE==='true')throw new Error('Legacy staging mode is unsupported. This release uses the root application only.');
 function integer(name, fallback, min, max) {
   const value = Number(process.env[name] ?? fallback);
   if (!Number.isInteger(value) || value < min || value > max) throw new Error(`Invalid ${name}`);

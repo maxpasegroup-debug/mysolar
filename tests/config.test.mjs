@@ -6,6 +6,8 @@ unitEnvironment();
 const configurationModule=new URL('../server/config.js',import.meta.url).href;
 const run=overrides=>spawnSync(process.execPath,['--input-type=module','-e','import '+JSON.stringify(configurationModule)],{cwd:new URL('../',import.meta.url),env:{...process.env,...overrides},encoding:'utf8',windowsHide:true});
 test('configuration: valid isolated test settings load',()=>assert.equal(run({}).status,0));
+
+test('configuration: removed private-environment mode fails closed before startup',()=>{const r=run({STAGING_MODE:'true'});assert.notEqual(r.status,0);assert.match(r.stderr,/Legacy staging mode is unsupported/);});
 test('configuration: missing mandatory secret fails without its value',()=>{const r=run({SESSION_SECRET:''});assert.notEqual(r.status,0);assert.match(r.stderr,/SESSION_SECRET/);});
 test('configuration: malformed origin does not expose its input in a startup stack',()=>{const r=run({APP_ORIGIN:'not a URL phase10-secret-marker'});assert.notEqual(r.status,0);assert.doesNotMatch(r.stderr,/phase10-secret-marker/);});
 test('configuration: non-PostgreSQL database URL is rejected',()=>assert.notEqual(run({DATABASE_URL:'https://database.test.invalid'}).status,0));

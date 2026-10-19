@@ -4,7 +4,6 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath,pathToFileURL } from 'node:url';
 import { migrationManifest } from './db/migrations.js';
 import { config } from './config.js';
-import {stagingSettings,stagingBoundary} from './staging.js';
 import {hostnameBoundary} from './domains/resolution.js';
 import {companyDomains,platformDomains} from './domains/routes.js';
 import { pool } from './db/pool.js';
@@ -51,7 +50,6 @@ app.use(helmet({
 }));
 app.use((req,res,next)=>{req.requestId=randomUUID();res.set('X-Request-ID',req.requestId);next();});
 app.use(hostnameBoundary({db:pool,origin:config.origin,production:config.production}));
-app.use(stagingBoundary(stagingSettings()));
 app.get('/healthz',(req,res)=>{res.set('Cache-Control','no-store').json({status:'ok'});});
 let readiness;
 app.get('/readyz',async(req,res)=>{res.set('Cache-Control','no-store');try{readiness??=(async()=>{const expected=await migrationManifest(),result=await pool.query({text:'SELECT name,checksum FROM schema_migrations WHERE name=ANY($1::text[])',values:[expected.map(x=>x.name)],query_timeout:1500});return expected.every(x=>result.rows.some(r=>r.name===x.name&&r.checksum===x.checksum));})().finally(()=>{readiness=null;});const ready=await readiness;res.status(ready?200:503).json({status:ready?'ready':'unavailable'});}catch{res.status(503).json({status:'unavailable'});}});

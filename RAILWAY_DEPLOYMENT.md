@@ -1,5 +1,7 @@
 # MY SOLAR deployment runbook
 
+> Historical runbook, superseded on 19 October 2026 by [ROOT_DEPLOYMENT.md](ROOT_DEPLOYMENT.md). Staging tools and runtime have been removed. Commands/targets below are retained as past evidence and must not be used as current instructions. No remote environment was deleted by the root consolidation.
+
 ## Current Phase 11 execution — 18 October 2026
 
 Isolated staging now exists and is deployed. Follow [OPERATIONS_RUNBOOK.md](OPERATIONS_RUNBOOK.md) and the current section of [PHASE_11_STAGING_ACCEPTANCE_HANDOFF.md](PHASE_11_STAGING_ACCEPTANCE_HANDOFF.md) for exact identifiers, private access, migrations, rollback and recovery evidence. Effective staging deployment settings now contain the pre-deploy migration command and `/readyz`; production was not changed. Actual restore and failed-health-gate drills passed. Resend recipient/sender/key, real email delivery, continuous alerts and extended staging acceptance are still blockers. Do not advance to real onboarding or production release.

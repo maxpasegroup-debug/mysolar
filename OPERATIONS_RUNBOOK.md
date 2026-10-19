@@ -1,5 +1,7 @@
 # MY Solar staging release and recovery runbook
 
+> Historical evidence only, superseded on 19 October 2026 by [ROOT_DEPLOYMENT.md](ROOT_DEPLOYMENT.md). Referenced staging runners and access/mail wrappers have been removed; the commands below are no longer a supported release procedure. This record is not proof of any remote environment's current status.
+
 Scope: authorised staging only, 18 October 2026. This does not authorise production rollout, production backups/restores, DNS changes, live company-domain traffic, payments or real-customer onboarding.
 
 ## Fixed target and access

@@ -1,8 +1,10 @@
 # Controlled business pilot
 
-Status: **NOT STARTED — participant authorization and live release evidence pending.**
+Status: **USER-LED ONBOARDING — real pilot observations and live release evidence pending.**
 
 This playbook prepares Phase 5. Local tests from earlier phases are engineering evidence, not evidence that real companies use or will pay for MY SOLAR. No participant has been recruited, registered or contacted by this preparation.
+
+The operator has chosen to onboard the real company personally. The assistant will not create companies, accounts or invitations. Use the first-session steps below during your onboarding, then share the step reached, expected result, actual result and any error reference, without passwords or private invitation links. No participant roster is needed in chat for you to begin your own onboarding. Any later assistant review of private records needs an explicitly approved scope.
 
 ## Approve the scope first
 
@@ -31,9 +33,9 @@ Record actual evidence for the intended target. Do not infer it from a successfu
 | Email | Approved invitation/recovery address actually receives a valid, expiring link; failures handled | Not verified live |
 | Recovery/operations | Current restore evidence, accountable support contact and failure monitoring | Current applicability not verified |
 | Commercial scope | Current access mode, published versions, actual entitlements, trial/end dates and limits recorded | Live review blocked by Railway authentication |
-| Participants | Explicit approved roster and invitation/observation scope | Not supplied |
+| Participants | Operator obtains participant consent and performs onboarding | User will onboard; actual completion not yet reported |
 
-No new staging environment is created by this phase. Use the explicitly approved existing target and its actual release evidence. A missing gate stays open; do not bypass it to claim the pilot started.
+No new staging environment is created by this phase. Use the explicitly approved existing target and its actual release evidence. A missing gate stays open; do not bypass it to claim the pilot started. Railway access was retried after authorization on 19 October 2026 and still returned Unauthorized. Authorization was given, but a working CLI session is unavailable; no live inspection or changes occurred.
 
 ## Assisted onboarding — first session
 

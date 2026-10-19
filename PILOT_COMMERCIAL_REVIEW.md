@@ -1,6 +1,6 @@
 # Pilot commercial and operating-cost review
 
-Review date: 19 October 2026. **Code/configuration findings below are verified locally; live plans, subscription assignments, provider bills, real usage and margin remain unverified.** Railway CLI currently returns “Unauthorized.” No prices, entitlements, subscriptions or provider settings were changed.
+Review date: 19 October 2026. **Code/configuration findings below are verified locally; live plans, subscription assignments, provider bills, real usage and margin remain unverified.** Railway CLI still returned “Unauthorized” when retried after the operator authorized read-only access. No prices, entitlements, subscriptions or provider settings were changed. The operator will onboard the real company; no participant records or invitations were created by the assistant.
 
 ## Current implementation
 

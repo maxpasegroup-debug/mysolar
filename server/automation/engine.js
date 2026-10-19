@@ -1,3 +1,5 @@
+import {config} from '../config.js';
+import {enqueueMail} from '../mail-queue.js';
 import {randomUUID} from 'node:crypto';
 import {transaction,audit} from '../db/pool.js';
 import {permissionsFor} from '../permissions.js';
@@ -23,7 +25,7 @@ async function allowedRecipient(db,rule,row,userId,audience){
  try{await requireStaffEntitlement(db,ctx.companyId,ctx.role);}catch(error){if(error.status)return false;throw error;}
  if(rule.kind==='quotation')return ctx.permissions.includes('quotations.read')&&ctx.permissions.includes('leads.read');
  try{operations.readPermission(ctx,d.recordKind);}catch(error){if(error.status)return false;throw error;}
- const b=new operations.Bindings(),where=operations.scope(ctx,d.recordKind,b);where.push(`r.id=${b.add(row.id)}`);
+ const b=new operations.Bindings(),where=operations.scope(ctx,d.recordKind,b);where.push(`r.id=${b.add(['maintenance','renewal'].includes(rule.kind)?row.order_id:row.id)}`);
  return (await db.query(`SELECT 1 FROM ${d.table} r WHERE ${where.join(' AND ')}`,b.values)).rowCount>0;
 }
 
@@ -68,7 +70,8 @@ export async function deliver(db,claimed,{afterNotification=async()=>{}}={}){
  if(!await allowedRecipient(db,rule,row,job.recipient_id,job.audience))return finish(db,job,'skipped','PREFERENCE_OR_ACCESS');
  const d=reminders[job.kind],notificationId=job.id;
  if(job.kind==='quotation')await db.query('INSERT INTO workflow_notifications(id,user_id,company_id,enquiry_id,version_id,message) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING',[notificationId,job.recipient_id,job.audience==='staff'?job.company_id:null,row.enquiry_id,row.id,'Reminder: '+d.message]);
- else await db.query('INSERT INTO operations_notifications(id,user_id,company_id,record_type,record_id,message) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING',[notificationId,job.recipient_id,job.audience==='staff'?job.company_id:null,d.recordKind,row.id,'Reminder: '+d.message]);
+ else await db.query('INSERT INTO operations_notifications(id,user_id,company_id,record_type,record_id,message) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING',[notificationId,job.recipient_id,job.audience==='staff'?job.company_id:null,d.recordKind,['maintenance','renewal'].includes(job.kind)?row.order_id:row.id,'Reminder: '+d.message]);
+ if(rule.email_enabled&&config.mailEnabled&&config.dataEncryptionKey){const recipient=(await db.query('SELECT u.email FROM users u JOIN reminder_preferences p ON p.user_id=u.id WHERE u.id=$1 AND u.email_verified_at IS NOT NULL AND p.email_enabled AND p.enabled',[job.recipient_id])).rows[0];if(recipient&&! (await db.query("SELECT 1 FROM mail_jobs WHERE kind='reminder' AND reference_hash=$1",[job.id])).rowCount)await enqueueMail(db,{kind:'reminder',userId:job.recipient_id,companyId:job.company_id,email:recipient.email,referenceHash:job.id,subject:'MY Solar reminder: '+d.label,text:'A saved reminder is available. Sign in to review the authorized source record: '+config.origin+'/#/'+(job.audience==='staff'?'distributor':'customer')+'/notifications',expiresAt:new Date(Date.now()+6*3600000)});}
  await afterNotification(); // Dependency injection for rollback/recovery integration tests only.
  await db.query("INSERT INTO automation_deliveries(job_id,notification_id,channel) VALUES($1,$2,'in_app') ON CONFLICT(job_id) DO NOTHING",[job.id,notificationId]);
  await audit(db,{actor:rule.approved_by,company:job.company_id,action:'automation.reminder_delivered',target:job.id,metadata:{kind:job.kind,channel:'in_app'}});
@@ -89,3 +92,5 @@ export async function tick({run=transaction,limit=50,deliveryOptions}={}){
   await run(db=>db.query("UPDATE automation_worker_state SET last_finished_at=now(),last_status='ok' WHERE worker='reminders'"));return {planned,processed};
  }catch(error){try{await run(db=>db.query("UPDATE automation_worker_state SET last_finished_at=now(),last_status='failed' WHERE worker='reminders'"));}catch{}throw error;}
 }
+
+export async function emailStillAuthorized(db,mail){const j=(await db.query("SELECT *,occurrence::text,source_date::text FROM automation_jobs WHERE id=$1 AND recipient_id=$2 AND company_id=$3 AND status='delivered'",[mail.reference_hash,mail.user_id,mail.company_id])).rows[0];if(!j)return false;const rule=(await db.query('SELECT * FROM automation_rules WHERE id=$1 AND company_id=$2',[j.rule_id,j.company_id])).rows[0];const user=(await db.query("SELECT 1 FROM users u JOIN reminder_preferences p ON p.user_id=u.id WHERE u.id=$1 AND u.email=$2 AND u.status='active' AND u.email_verified_at IS NOT NULL AND p.enabled AND p.email_enabled",[mail.user_id,mail.recipient])).rowCount;const company=(await db.query('SELECT status,lifecycle FROM companies WHERE id=$1',[mail.company_id])).rows[0];if(!user||!rule?.enabled||!rule.email_enabled||rule.revision!==j.rule_revision||company?.status!=='active'||company?.lifecycle!=='active'||j.occurrence!==await day(db)||!enabled(await policy(db,mail.company_id),reminders[j.kind].feature))return false;const approver=await member(db,mail.company_id,rule.approved_by);if(!approver?.permissions.includes('automation.manage')||!approver.permissions.includes(reminders[j.kind].permission))return false;const row=(await source(db,rule,j.record_id))[0];return Boolean(row&&row[reminders[j.kind].date]===j.source_date&&await allowedRecipient(db,rule,row,mail.user_id,j.audience));}

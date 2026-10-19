@@ -6,7 +6,7 @@ export function areaMatch(bind,q,company='v.id',coverage=null){
   if(coverage)conditions.push(`(cardinality(${coverage})=0 OR a.label=ANY(${coverage}))`);
   if(q.state)conditions.push(`a.state_key=${bind.add(q.state)}`);
   if(q.district){const key=bind.add(q.district);conditions.push(`(a.district_key=${key} OR a.locality_key=${key}${q.state?" OR a.scope='state'":''})`);}
-  if(q.pin){const pin=bind.add(q.pin);conditions.push(`(a.pin=${pin} OR a.locality_key=${pin})`);}
+  if(q.pin){const pin=bind.add(q.pin);conditions.push(`(a.pin=${pin} OR a.locality_key=${pin} OR EXISTS(SELECT 1 FROM postal_locations loc WHERE loc.pin=${pin} AND loc.active AND a.state_key=loc.state_key AND (a.scope='state' OR a.scope='district' AND a.district_key=loc.district_key)))`);}
   if(q.area){const key=bind.add(q.area);conditions.push(`(a.locality_key=${key} OR a.district_key=${key} OR a.state_key=${key} OR a.pin=${key})`);}
   return `EXISTS(SELECT 1 FROM company_service_areas a WHERE ${conditions.join(' AND ')})`;
 }

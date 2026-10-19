@@ -13,7 +13,7 @@ test('isolated PostgreSQL: migrations 009–011 and domain security/lifecycle',{
  await t.test('008 upgrades sequentially through 009, 010 and 011 without changing historical checksums',async()=>{
   await applyMigrations(db,{through:'008_commercial.sql'});const before=(await db.query('SELECT name,checksum FROM schema_migrations ORDER BY name')).rows;
   for(const boundary of ['009_shared_invitations.sql','010_domain_registry.sql','011_pro_network.sql','012_automation.sql'])await applyMigrations(db,{through:boundary});
-  const expected=await migrationManifest();history=(await db.query('SELECT name,checksum,applied_at FROM schema_migrations ORDER BY name')).rows;
+  await applyMigrations(db);const expected=await migrationManifest();history=(await db.query('SELECT name,checksum,applied_at FROM schema_migrations ORDER BY name')).rows;
   assert.equal(history.length,expected.length);assert.deepEqual(history.map(x=>({name:x.name,checksum:x.checksum})),expected);assert.deepEqual(history.slice(0,8).map(x=>({name:x.name,checksum:x.checksum})),before);
   await applyMigrations(db);assert.deepEqual((await db.query('SELECT name,checksum,applied_at FROM schema_migrations ORDER BY name')).rows,history);
  });

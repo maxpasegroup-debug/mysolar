@@ -29,7 +29,7 @@ test('isolated PostgreSQL: PRO partners, staff assignments and downgrade boundar
   assert.equal((await db.query('SELECT count(*)::int AS n FROM company_partner_relationships')).rows[0].n,0);
  });
  await t.test('PRO price is validated; draft/publication/assignment remain operator-only and snapshotted',async()=>{
-  assert.equal((await a.request('/platform/commercial/plans','POST',{code:'pro',terms:terms('pro',{price:'1'}),reason:'[TEST] invalid PRO price'})).status,400);
+  assert.equal((await a.request('/platform/commercial/plans','POST',{code:'pro',terms:terms('pro',{price:'-1'}),reason:'[TEST] invalid PRO price'})).status,400);
   assert.equal((await b.request('/platform/commercial/plans','POST',{code:'free',terms:terms('free'),reason:'[TEST] ordinary owner cannot create plans'})).status,403);
   for(const code of ['free','elite','pro'])await publish(code);
   await assign(A,'pro');await assign(B,'pro');

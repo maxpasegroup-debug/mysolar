@@ -419,3 +419,13 @@ The Node service listens on `0.0.0.0` and Railway’s `PORT`, uses PostgreSQL in
 Manual setup remains: provision PostgreSQL, fill the ignored `.env`, apply migrations, optionally configure SMTP/verified sender and grant a platform administrator only if needed. Dependencies installed successfully; database, server and email workflows were not executed.
 
 Phase 10 must verify tampered IDs/cross-tenant child relationships, customer ownership, CSRF, cookie/proxy/TLS behavior, duplicate/concurrent requests, session expiry/revocation, membership races, reset replay/expiry/delivery failures, multi-instance rate limits, migration constraints, accessibility, responsive behavior, translation and preserved demos, alongside the Phase 3–4 concerns above. Production log retention and operational policies also require decisions. None of these are represented as tested. Phase 4 implementation is ready for Phase 5 development, subject to the planned verification phase; Phase 5 has not started.
+
+## Eight-phase release programme (current local implementation)
+
+Read `RELEASE_PROGRAMME_HANDOFF.md` and `RELEASE_OPERATIONS_RUNBOOK.md` before releasing this change. They supersede older statements about immediate email delivery, unavailable uploads and fixed PRO pricing. The existing application and backend remain in the repository root; no staging application was introduced.
+
+New forward migrations are 013–020. Use only `npm run db:migrate` as the supported migration mechanism against an explicitly approved target. This work applied migrations only to disposable local test databases.
+
+Email verification, recovery and automatic invitation delivery now require a separate `DATA_ENCRYPTION_KEY` and a running `npm run worker:mail` process, in addition to existing mail configuration. Optional operational monitoring runs through `npm run worker:monitor`; reminders continue through `npm run worker:reminders`. These are separate supervised processes, not work performed by the web process. Configure and verify them before an approved live release. Uploads remain blocked without the configured scanning gateway and encryption key. Custom-domain provisioning/traffic remain disabled.
+
+Use `npm run test:localdb` for isolated database verification and `npm run test:browser` for local browser checks. `.verification/` and `.pilot/` are excluded from deployment and source control. Local evidence does not establish inbox receipt, remote recovery or production readiness.

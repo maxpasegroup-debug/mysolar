@@ -36,7 +36,7 @@ invitations.post('/invitations/preview',async(req,res)=>{
 });
 invitations.get('/companies/current/invitations',async(req,res)=>res.json(await withCompany(req,'members.read',async(db,ctx)=>{
   const rows=await db.query(`SELECT id,email,role_id AS role,CASE WHEN status='pending' AND expires_at<=now() THEN 'expired' ELSE status END AS status,delivery,expires_at,created_at FROM company_invitations WHERE company_id=$1 ORDER BY created_at DESC LIMIT 100`,[ctx.companyId]);
-  return {invitations:rows.rows,deliveryMode:config.invitationDelivery,available:true,emailAvailable:config.mailEnabled,assignableRoles:staffRoles};
+  return {invitations:rows.rows,deliveryMode:config.invitationDelivery,available:true,emailAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey),assignableRoles:staffRoles};
 })));
 invitations.post('/companies/current/invitations',async(req,res)=>{
   v.body(req.body,['email','role','delivery','staffDetails'],['email','role']);const email=v.email(req.body.email),role=v.choice(req.body.role,staffRoles,'company role'),details=staffDetails(req.body.staffDetails,role);

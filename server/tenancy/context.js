@@ -1,3 +1,4 @@
+import {privilegedProtection} from '../auth/protection.js';
 import { transaction } from '../db/pool.js';
 import { lockedUser } from '../auth/sessions.js';
 import { permissionsFor } from '../permissions.js';
@@ -16,6 +17,7 @@ export async function withCompany(req, permission, work) {
     const permissions = await permissionsFor(db,membership.rows[0].role_id);
     if (!permissions.includes(permission)) throw new HttpError(403,'PERMISSION_DENIED','Your company role does not allow this action.');
     const company=membership.rows[0];
+    if(company.role_id==='owner')await privilegedProtection(db,req,user);
     const readOnly=['company.read','company.setup.read','company.brand.read','members.read','audit.read','workspace.read','offers.read','subscription.read','domains.read'];
     if(company.status==='suspended'&&!readOnly.includes(permission))throw new HttpError(403,'COMPANY_SUSPENDED','This company is suspended. Only read-only setup access is available to its owner.');
     const context = Object.freeze({ userId:user.id, companyId:user.active_company_id, membershipId:company.id, role:company.role_id, lifecycle:company.lifecycle, permissions:Object.freeze(permissions) });

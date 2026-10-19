@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { mailTransport as transport } from '../mail.js';
 import { pool, transaction, audit } from '../db/pool.js';
+import {enqueueMail} from '../mail-queue.js';
+import {accountProtection,verifySecondFactor} from './protection.js';
 import { config } from '../config.js';
 import * as v from '../validation.js';
 import { HttpError } from '../errors.js';
@@ -12,9 +14,10 @@ import { csrf, csrfToken, requireUser, issueSession, setSessionCookie, clearSess
 export const auth = Router();
 const recoveryMessage = 'If this address belongs to an active account and delivery is available, recovery instructions will be provided by email. Delivery is not guaranteed.';
 let dummyHash;
+const badInvitation=()=>new HttpError(400,'INVALID_INVITATION','This invitation is unavailable or belongs to another address.');
 
 async function sessionView(req) {
-  if (!req.session.user_id) return { user:null, companies:[], activeCompany:null, permissions:[], platformPermissions:[], recoveryAvailable:config.mailEnabled, csrfToken:csrfToken(req.sessionToken) };
+  if (!req.session.user_id) return { user:null, companies:[], activeCompany:null, permissions:[], platformPermissions:[], recoveryAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey), csrfToken:csrfToken(req.sessionToken) };
   return transaction(async db => {
     const user = await lockedUser(db,req);
     const memberships = await db.query(`SELECT c.id,c.name,c.city,c.status,c.lifecycle,m.role_id AS role,r.label AS role_label,
@@ -25,11 +28,11 @@ async function sessionView(req) {
     if (!activeCompany && user.active_company_id) await db.query('UPDATE sessions SET active_company_id=NULL WHERE token_hash=$1',[req.session.token_hash]);
     const admin = await db.query('SELECT role_id FROM platform_admin_grants WHERE user_id=$1',[user.id]);
     return {
-      user:{id:user.id,email:user.email,name:user.display_name},companies:memberships.rows,activeCompany,
+      user:{id:user.id,email:user.email,name:user.display_name,emailVerified:Boolean(user.email_verified_at)},companies:memberships.rows,activeCompany,
       permissions:activeCompany ? await permissionsFor(db,activeCompany.role) : [],
       customerPermissions:await permissionsFor(db,'customer'),
       platformPermissions:admin.rowCount ? await permissionsFor(db,admin.rows[0].role_id) : [],
-      recoveryAvailable:config.mailEnabled,csrfToken:csrfToken(req.sessionToken)
+      recoveryAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey),csrfToken:csrfToken(req.sessionToken)
     };
   });
 }
@@ -42,10 +45,16 @@ auth.get('/session',async(req,res)=>{
   res.json(await sessionView(req));
 });
 auth.post('/register',csrf,async(req,res)=>{
-  await limit(req,'register-ip',req.ip,5,3600);
+
   if(req.session.user_id) throw new HttpError(409,'ALREADY_SIGNED_IN','Sign out before creating another account.');
-  const input=v.body(req.body,['name','email','password']);
+  const input=v.body(req.body,['name','email','password','invitationToken'],['name','email','password']);
   const name=v.text(input.name,'name',100), email=v.email(input.email), password=v.password(input.password);
+  let invited=false;
+  if(input.invitationToken!==undefined){const raw=v.text(input.invitationToken,'invitation',43,43);if(!/^[A-Za-z0-9_-]{43}$/.test(raw))throw badInvitation();
+    const result=await pool.query(`SELECT 1 FROM (SELECT company_id,email,invited_by,expires_at,status FROM company_invitations WHERE token_hash=$1 UNION ALL SELECT company_id,email,invited_by,expires_at,status FROM customer_access_invitations WHERE token_hash=$1) i JOIN companies c ON c.id=i.company_id JOIN company_memberships m ON m.company_id=c.id AND m.user_id=i.invited_by JOIN users u ON u.id=m.user_id WHERE i.email=$2 AND i.status='pending' AND i.expires_at>now() AND c.status='active' AND c.lifecycle='active' AND m.status='active' AND u.status='active' AND EXISTS(SELECT 1 FROM role_permissions p WHERE p.role_id=m.role_id AND p.permission_id='invitations.manage')`,[digest(raw),email]);
+    if(!result.rowCount)throw badInvitation();invited=true;await limit(req,'invited-register',digest(raw),3,3600);
+  }
+  await limit(req,invited?'invited-register-ip':'register-ip',req.ip,invited?30:5,3600);
   const hash=await hashPassword(password);
   const issued=await transaction(async db=>{
     const id=randomUUID();
@@ -58,7 +67,7 @@ auth.post('/register',csrf,async(req,res)=>{
 });
 auth.post('/login',csrf,async(req,res)=>{
   await limit(req,'login-ip',req.ip,20);
-  const input=v.body(req.body,['email','password']);
+  const input=v.body(req.body,['email','password','code'],['email','password']);
   const email=v.email(input.email), password=v.password(input.password);
   await limit(req,'login-account',email,10);
   const result=await pool.query('SELECT id,password_hash,status FROM users WHERE email=$1',[email]);
@@ -72,9 +81,11 @@ auth.post('/login',csrf,async(req,res)=>{
   const issued=await transaction(async db=>{
     const locked=await db.query('SELECT password_hash,status FROM users WHERE id=$1 FOR UPDATE',[record.id]);
     if(locked.rows[0].status!=='active'||locked.rows[0].password_hash!==record.password_hash) throw new HttpError(401,'INVALID_CREDENTIALS','The email or password is incorrect.');
+    const mfa=await verifySecondFactor(db,record.id,input.code);
     const memberships=await db.query(`SELECT m.company_id FROM company_memberships m JOIN companies c ON c.id=m.company_id WHERE m.user_id=$1 AND m.status='active' AND (c.status='active' OR m.role_id='owner') ORDER BY m.created_at LIMIT 2`,[record.id]);
     await audit(db,{actor:record.id,action:'auth.login'});
-    return issueSession(db,record.id,req.session.token_hash,memberships.rowCount===1?memberships.rows[0].company_id:null);
+    const issued=await issueSession(db,record.id,req.session.token_hash,memberships.rowCount===1?memberships.rows[0].company_id:null);
+    if(mfa)await db.query('UPDATE sessions SET mfa_verified_at=now() WHERE token_hash=$1',[digest(issued.token)]);return issued;
   });
   setSessionCookie(res,issued);res.json({message:'Signed in.'});
 });
@@ -97,34 +108,10 @@ auth.post('/recover',csrf,async(req,res)=>{
   const input=v.body(req.body,['email']);const email=v.email(input.email);
   await limit(req,'recover-account',email,3,3600);
   // Do not look up an account or mint a token when delivery is not configured.
-  if(!transport) throw new HttpError(503,'RECOVERY_UNAVAILABLE','Email recovery is not configured. No recovery email was sent. Contact the platform operator.');
-  // Respond before any account lookup or SMTP call to avoid an account-existence timing signal.
-  // This foundation is best-effort, in-process delivery; no plaintext reset token is persisted.
-  setImmediate(()=>{void deliverRecovery(email).catch(()=>console.error(JSON.stringify({event:'recovery_worker_failed'})));});
+  if(!transport||!config.dataEncryptionKey) throw new HttpError(503,'RECOVERY_UNAVAILABLE','Email recovery is not configured. No recovery email was sent. Contact the platform operator.');
+  await transaction(async db=>{const user=(await db.query("SELECT id,email FROM users WHERE email=$1 AND status='active' FOR UPDATE",[email])).rows[0];if(!user)return;const token=randomToken(),tokenHash=digest(token);await db.query('DELETE FROM password_reset_tokens WHERE user_id=$1',[user.id]);await db.query("INSERT INTO password_reset_tokens(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '30 minutes')",[tokenHash,user.id]);await enqueueMail(db,{kind:'recovery',userId:user.id,email:user.email,referenceHash:tokenHash,subject:'Reset your MY SOLAR password',text:'Reset your password within 30 minutes: '+config.origin+'/#/reset-password?token='+token,expiresAt:new Date(Date.now()+1800000)});await audit(db,{actor:user.id,action:'auth.recovery_queued'});});
   res.status(202).json({message:recoveryMessage});
 });
-async function deliverRecovery(email) {
-  const token=randomToken();const tokenHash=digest(token);
-  const user=await transaction(async db=>{
-    const found=await db.query("SELECT id,email FROM users WHERE email=$1 AND status='active' FOR UPDATE",[email]);
-    if(!found.rowCount)return null;
-    await db.query('DELETE FROM password_reset_tokens WHERE user_id=$1',[found.rows[0].id]);
-    await db.query("INSERT INTO password_reset_tokens(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '30 minutes')",[tokenHash,found.rows[0].id]);
-    await audit(db,{actor:found.rows[0].id,action:'auth.recovery_requested'});
-    return found.rows[0];
-  });
-  if(user) {
-    try {
-      const url=`${config.origin}/#/reset-password?token=${encodeURIComponent(token)}`;
-      await transport.sendMail({from:config.mailFrom,to:user.email,subject:'Reset your MY SOLAR password',text:`A password reset was requested for your MY SOLAR account. This link expires in 30 minutes and can be used once:\n\n${url}\n\nIf you did not request this, ignore this message.`});
-    } catch {
-      await transaction(async db=>{
-        await db.query('DELETE FROM password_reset_tokens WHERE token_hash=$1',[tokenHash]);
-        await audit(db,{actor:user.id,action:'auth.recovery_delivery_failed'});
-      });
-    }
-  }
-}
 auth.post('/reset-password',csrf,async(req,res)=>{
   await limit(req,'reset-ip',req.ip,10,3600);
   const input=v.body(req.body,['token','password']);
@@ -146,3 +133,5 @@ auth.post('/reset-password',csrf,async(req,res)=>{
   await pool.query('DELETE FROM sessions WHERE token_hash=$1',[req.session.token_hash]);
   clearSessionCookie(res);res.json({message:'Password changed. All account sessions were signed out. Please sign in again.'});
 });
+
+auth.use(accountProtection);

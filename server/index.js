@@ -1,4 +1,12 @@
 import express from 'express';
+import {whiteLabel,publishedWebsites} from './white-label.js';
+import {serviceContracts} from './service-contracts.js';
+import {documents} from './documents.js';
+import {solarDelivery} from './solar-delivery.js';
+import {salesTools} from './sales-tools.js';
+import {publicPages} from './public-pages.js';
+import {postal} from './postal.js';
+import {operationsHealth} from './operations-health.js';
 import helmet from 'helmet';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath,pathToFileURL } from 'node:url';
@@ -59,10 +67,15 @@ app.use('/api',async(req,res,next)=>{
   await limit(req,'api-ip',req.ip,240);
   next();
 });
-app.use(['/api/companies/current/enquiries/:id/quotations','/api/companies/current/quotations/:id','/api/companies/current/operations/orders'],sameOrigin,express.json({limit:'48kb',strict:true}));
+app.use('/api/companies/current/files',sameOrigin,express.json({limit:'3mb',strict:true}));
+app.use(['/api/companies/current/enquiries/:id/quotations','/api/companies/current/quotations/:id','/api/companies/current/operations/orders','/api/companies/current/imports/preview','/api/platform/locations/import'],sameOrigin,express.json({limit:'48kb',strict:true}));
 app.use('/api',sameOrigin,express.json({limit:'16kb',strict:true}),sessionMiddleware);
 app.use('/api',(req,res,next)=>{const expected=req.get('x-account-id');if(expected&&expected!==req.session?.user_id)throw new HttpError(409,'ACCOUNT_CONTEXT_CHANGED','Your signed-in account changed. Refresh before submitting this form.');next();});
 app.use('/api/auth',auth);
+app.use('/api',postal);
+app.use('/api',whiteLabel);
+app.use('/api',documents,solarDelivery,serviceContracts);
+app.use('/api/platform/operations',operationsHealth);
 app.use('/api/reminders/preferences',reminderPreferences);
 app.use('/api/companies/current/automation',automation);
 app.use('/api/platform/domains',platformDomains);
@@ -75,6 +88,7 @@ app.use('/api/customer/experience',customerExperience,customerRecords);
 app.use('/api/companies/current/operations',operations,crm,customerInvitations,orders,warehouse,delivery,finance,notificationRoutes());
 app.use('/api/customer/operations',customerOperations,notificationRoutes(true));
 app.use('/api/customer',purchaseCustomer,customerNotifications);
+app.use('/api/companies/current',salesTools);
 app.use('/api/companies/current',purchaseCompany,companyNotifications);
 app.use('/api/public',discovery);
 app.use('/api/companies/current',listings);
@@ -89,9 +103,11 @@ app.get('/api/platform/audit',requireUser,platformAudit);
 app.use('/api',(req,res)=>res.status(404).json({error:{code:'NOT_FOUND',message:'API route not found.',requestId:req.requestId}}));
 // Explicit asset allowlist. Never expose .env, server source, migrations or dependency directories.
 const root=new URL('../',import.meta.url);
-for(const asset of ['src/automation.js','src/workspace.js','solar-discovery.css','src/solar-discovery.js','onboarding.css','src/onboarding.js','public-header.css','src/public-header.js','assets/my-solar-solutions-logo.png','landing.css','src/landing.js','assets/landing-solar.jpg','assets/landing-solar-960.webp','assets/landing-solar-1536.webp','index.html','styles.css','accounts.css','organization.css','marketplace.css','purchase.css','operations.css','experience.css','sia.css','src/sia.js','commercial.css','src/commercial.js','manifest.webmanifest','sw.js','offline.html','offline.css','assets/app-mark.svg','assets/app-192.png','assets/app-512.png','assets/apple-touch-icon.png','src/locale.js','src/journey.js','src/pwa.js','src/experience.js','src/app.js','src/account.js','src/growth.js','src/organization.js','src/marketplace.js','src/purchase.js','src/operations.js']) {
+for(const asset of ['src/private-download.js','src/release-tools.js','src/print-record.js','src/account-security.js','src/automation.js','src/workspace.js','solar-discovery.css','src/solar-discovery.js','onboarding.css','src/onboarding.js','public-header.css','src/public-header.js','assets/my-solar-solutions-logo.png','landing.css','src/landing.js','assets/landing-solar.jpg','assets/landing-solar-960.webp','assets/landing-solar-1536.webp','index.html','styles.css','accounts.css','organization.css','marketplace.css','purchase.css','operations.css','experience.css','sia.css','src/sia.js','commercial.css','src/commercial.js','manifest.webmanifest','sw.js','offline.html','offline.css','assets/app-mark.svg','assets/app-192.png','assets/app-512.png','assets/apple-touch-icon.png','src/locale.js','src/journey.js','src/pwa.js','src/experience.js','src/app.js','src/account.js','src/growth.js','src/organization.js','src/marketplace.js','src/purchase.js','src/operations.js']) {
   app.get(`/${asset}`,(req,res)=>{res.set('Cache-Control','no-cache');if(asset==='manifest.webmanifest')res.type('application/manifest+json');if(asset==='sw.js')res.set('Service-Worker-Allowed','/');res.sendFile(fileURLToPath(new URL(asset,root)));});
 }
+app.use(publicPages);
+app.use(publishedWebsites);
 app.get('/',(req,res)=>{res.set('Cache-Control','no-cache');res.sendFile(fileURLToPath(new URL('index.html',root)));});
 app.use((req,res)=>res.status(404).type('text').send('Page not found.'));
 app.use(errorHandler);

@@ -1,0 +1,23 @@
+﻿import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {connectedFixture} from './helpers/connected-fixture.mjs';
+test('branded publication, immutable saved versions, consultation records and private actual costs',{skip:!process.env.TEST_DATABASE_URL,timeout:120000},async t=>{
+ const {db,a,b,customer,companyA,base}=await connectedFixture(t);
+ const request={operationKey:randomUUID(),message:'[TEST] review a company branded page and domain',contactPreference:'email'};
+ const recorded=await a.request('/companies/current/white-label-requests','POST',request);assert.equal(recorded.status,201,JSON.stringify(recorded.data));assert.equal((await a.request('/companies/current/white-label-requests','POST',request)).data.id,recorded.data.id);
+ assert.equal((await a.request('/platform/white-label-requests')).status,403);
+ const draft={revision:0,template:'warm',title:'[TEST] Solar for your home',introduction:'[TEST] Genuine company information',about:'[TEST] Description <script>alert(1)</script>'};
+ const saved=await a.request('/companies/current/website/draft','POST',draft);assert.equal(saved.status,201,JSON.stringify(saved.data));
+ assert.equal((await b.request('/companies/current/website/preview')).status,404);
+ assert.equal((await fetch(base+'/sites/'+companyA)).status,404);
+ assert.equal((await a.request('/companies/current/website/publish','POST',{revision:1,publish:true,confirm:false})).status,400);
+ const published=await a.request('/companies/current/website/publish','POST',{revision:1,publish:true,confirm:true});assert.equal(published.status,200,JSON.stringify(published.data));
+ let page=await fetch(base+'/sites/'+companyA);assert.equal(page.status,200);let html=await page.text();assert.match(html,/Solar for your home/);assert.doesNotMatch(html,/<script>alert/);assert.match(html,/&lt;script&gt;/);await db.query("UPDATE company_branding SET public_name='PRIVATE UNSAVED BRAND CHANGE' WHERE company_id=$1",[companyA]);assert.doesNotMatch(await (await fetch(base+'/sites/'+companyA)).text(),/PRIVATE UNSAVED BRAND CHANGE/);
+ const next=await a.request('/companies/current/website/draft','POST',{...draft,revision:2,title:'[TEST] Private next headline'});assert.equal(next.status,201);assert.doesNotMatch(await (await fetch(base+'/sites/'+companyA)).text(),/Private next headline/);
+ assert.equal((await a.request('/companies/current/website/publish','POST',{revision:3,publish:false,confirm:true})).status,200);assert.equal((await fetch(base+'/sites/'+companyA)).status,404);assert.equal((await db.query('SELECT count(*)::int AS n FROM website_versions WHERE company_id=$1',[companyA])).rows[0].n,2);
+ await db.query("INSERT INTO platform_admin_grants(user_id,reason) VALUES($1,'[TEST] isolated operator')",[b.user.id]);
+ assert.equal((await b.request('/platform/white-label-requests')).data.items.length,1);
+ const cost={periodStart:'2026-01-01',periodEnd:'2026-01-31',category:'[TEST] hosting',amountPaise:'12345',currency:'INR',evidenceReference:'[TEST] invoice 1'};
+ assert.equal((await a.request('/platform/costs','POST',cost)).status,403);assert.equal((await b.request('/platform/costs','POST',{...cost,periodStart:'2026-02-30'})).status,400);assert.equal((await b.request('/platform/costs','POST',cost)).status,201);assert.equal((await b.request('/platform/costs')).data.totals[0].amount_paise,'12345');assert.equal((await customer.request('/platform/costs')).status,403);
+});

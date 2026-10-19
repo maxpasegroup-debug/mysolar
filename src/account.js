@@ -2,7 +2,7 @@
 window.Account = (() => {
   let state={loading:true,error:'',user:null,companies:[],activeCompany:null,permissions:[],customerPermissions:[],csrfToken:''};
   let resources=new Map();let generation=0;let pending=null;let flash='';let resetToken='';let submitting=false;
-  const authPaths=['/customer/login','/distributor/login','/register','/recover','/reset-password','/distributor/onboarding','/companies','/invitation'];
+  const authPaths=['/account-security','/customer/login','/distributor/login','/register','/recover','/reset-password','/distributor/onboarding','/companies','/invitation'];
   const path=()=> (location.hash.slice(1)||'/').split('?')[0];
   const isDemo=()=>new URLSearchParams(location.hash.split('?')[1]||'').get('demo')==='1';
   const isPrivate=p=>p==='/sia'||p.startsWith('/platform')||(p.startsWith('/customer/')&&!authPaths.includes(p))||(p.startsWith('/distributor/')&&!authPaths.includes(p));
@@ -53,13 +53,13 @@ window.Account = (() => {
   }
   function loading(){return `<section class="panel account-state" role="status"><span class="round-icon loading-ring">${icon('clock')}</span><h2>Getting things ready</h2><p class="muted">Loading this view. Please wait…</p></section>`;}
   function problem(message){return `<section class="panel account-state" role="alert"><span class="round-icon">${icon('help')}</span><h2>We couldn’t open this view.</h2><p class="muted">${e(message)}</p><button class="btn secondary" data-account-action="refresh">Try again</button>${link('/companies','Choose a company','text-link')}${link('/customer/login','Sign in','text-link')}</section>`;}
-  function field(label,name,type='text',value='',extra=''){return `<label>${label}<input name="${name}" type="${type}" value="${e(value)}" ${extra}></label>`;}
+  function field(label,name,type='text',value='',extra=''){return `<label>${t(label)}<input name="${name}" type="${type}" value="${e(value)}" ${extra}></label>`;}
   function feedback(){return `<p id="account-feedback" class="account-feedback" role="status" aria-live="polite">${e(flash)}</p>`;}
   function form(id,content,submit){return `<form id="${id}" class="account-form">${content}${feedback()}<button type="submit" class="btn primary">${submit}${icon('arrow')}</button></form>`;}
   function accountFrame(title,description,content){return `<div class="auth-layout"><div><p class="eyebrow">MY SOLAR · YOUR ACCOUNT</p><h1>${title}</h1><p class="muted">${description}</p><div class="auth-art">${icon('sun')}</div></div><section class="panel settings-panel">${content}</section></div>`;}
   function loginPage(distributor=false) {
     if(state.user)return accountFrame('You’re signed in.','Choose where you’d like to go next.',`<h2>${e(state.user.name)}</h2><p class="muted">${e(state.user.email)}</p><div class="account-actions">${link(distributor?'/companies':'/customer/dashboard','Open your workspace '+icon('arrow'),'btn primary')}${link('/distributor/onboarding','Register a company','btn secondary')}<button class="btn secondary" data-account-action="logout">Sign out</button></div>`);
-    return accountFrame('Good to have<br>you here.',distributor?'Sign in, then choose an authorized company workspace.':'Your personal solar journey starts here.',`<h2>${distributor?'Distributor':'Customer'} sign in</h2>${state.error?`<p class="account-feedback" role="alert">${e(state.error)}</p>`:''}${form('account-login',field('Email address','email','email','','required autocomplete="username" maxlength="254"')+field('Password','password','password','','required autocomplete="current-password" minlength="12" maxlength="128"'),'Sign in')}<div class="account-links">${link(Journey.authPath('/recover'),'Forgot password?','text-link')}${link(Journey.authPath(`/register?journey=${distributor?'distributor':'customer'}`),'Create an account','text-link')}</div><div class="divider">FICTIONAL UI PREVIEW</div>${link(`${distributor?'/distributor':'/customer'}/dashboard?demo=1`,'Explore without an account','btn secondary')}<p class="fine-print">Demo mode does not sign you in or grant access to private data.</p>`);
+    return accountFrame('Good to have<br>you here.',distributor?'Sign in, then choose an authorized company workspace.':'Your personal solar journey starts here.',`<h2>${distributor?'Distributor':'Customer'} sign in</h2>${state.error?`<p class="account-feedback" role="alert">${e(state.error)}</p>`:''}${form('account-login',field('Email address','email','email','','required autocomplete="username" maxlength="254"')+field('Password','password','password','','required autocomplete="current-password" minlength="12" maxlength="128"')+field('Authenticator or recovery code ? if enabled','code','text','','autocomplete="one-time-code" maxlength="32"'),'Sign in')}<div class="account-links">${link(Journey.authPath('/recover'),'Forgot password?','text-link')}${link(Journey.authPath(`/register?journey=${distributor?'distributor':'customer'}`),'Create an account','text-link')}</div><div class="divider">FICTIONAL UI PREVIEW</div>${link(`${distributor?'/distributor':'/customer'}/dashboard?demo=1`,'Explore without an account','btn secondary')}<p class="fine-print">Demo mode does not sign you in or grant access to private data.</p>`);
   }
   function registerPage(){
     if(state.user)return loginPage();
@@ -78,7 +78,7 @@ window.Account = (() => {
   }
   function companyPicker(){if(!state.user)return loginPage(true);return `${heading('YOUR AUTHORIZED WORKSPACES','Choose your company.','Only active company memberships appear here.')}${feedback()}<div class="company-grid">${state.companies.map(company=>`<article class="panel company-option"><span class="round-icon">${icon('sun')}</span><h2>${e(company.name)}</h2><p class="muted">${e(company.city)} · ${e(company.role_label)}</p><button class="btn ${company.id===state.activeCompany?.id?'secondary':'primary'}" data-account-action="select-company" data-company="${e(company.id)}">${company.id===state.activeCompany?.id?'Open workspace':'Use this company'} ${icon('arrow')}</button></article>`).join('')||`<section class="panel account-state"><h2>A fresh start for your business.</h2><p class="muted">You don’t have an active company membership. Register your company, or ask its owner to add your registered email.</p></section>`}</div><div class="center-cta">${link('/distributor/onboarding?new=1','Register another company '+icon('arrow'),'btn secondary')}</div>`;}
   const routePermission={
-    '/distributor/public-profile':'company.setup.read','/distributor/white-label':'company.setup.read','/distributor/partners':'partners.read','/distributor/subscription':'subscription.read','/distributor/field':'tasks.own','/distributor/crm':'crm.read','/distributor/customers':'customers.read','/distributor/orders':'orders.read','/distributor/procurement':'procurement.read','/distributor/suppliers':'procurement.read','/distributor/payables':'finance.read','/distributor/tasks':'tasks.own',
+    '/distributor/website':'company.brand.read','/distributor/service-contracts':'service.read','/distributor/equipment':'orders.read','/distributor/import':'customers.manage','/distributor/templates':'quotations.read','/distributor/public-profile':'company.setup.read','/distributor/white-label':'company.setup.read','/distributor/partners':'partners.read','/distributor/subscription':'subscription.read','/distributor/field':'tasks.own','/distributor/crm':'crm.read','/distributor/customers':'customers.read','/distributor/orders':'orders.read','/distributor/procurement':'procurement.read','/distributor/suppliers':'procurement.read','/distributor/payables':'finance.read','/distributor/tasks':'tasks.own',
     '/distributor/enquiry':'leads.read','/distributor/quotation':'quotations.read','/distributor/quotation/new':'quotations.manage','/distributor/notifications':'workspace.read',
     '/distributor/catalogue':'offers.read','/distributor/offers':'offers.read','/distributor/offer':'offers.manage','/distributor/service-areas':'company.setup.read',
     '/distributor/setup':'company.setup.read','/distributor/branding':'company.brand.manage','/distributor/team':'members.read',
@@ -108,14 +108,17 @@ window.Account = (() => {
     if(p==='/storefront')return Organization.page(p);
     if(!authPaths.includes(p)&&(!isPrivate(p)||isDemo()))return null;
     if(state.loading)return loading();
+    if(p==='/account-security')return state.user?AccountSecurity.page():loginPage(false);
     if(p==='/invitation')return Organization.page(p);
     if(p==='/customer/login'||p==='/distributor/login')return loginPage(p.startsWith('/distributor'));
     if(p==='/register')return registerPage();if(p==='/recover')return recoveryPage();if(p==='/reset-password')return recoveryPage(true);
     if(p==='/distributor/onboarding')return state.error?problem(state.error):onboarding();if(p==='/companies')return state.error?problem(state.error):companyPicker();
     if(state.error)return problem(state.error);if(!state.user)return loginPage(!p.startsWith('/customer/'));
+    if(['/platform/locations','/platform/mail','/platform/operations','/platform/white-label-requests','/platform/costs'].includes(p))return ReleaseTools.page(p);
     if(p.startsWith('/platform')){const commercialPage=Commercial.page(p);if(commercialPage!==null)return commercialPage;const marketplacePage=Marketplace.page(p);return marketplacePage===null?Organization.page(p):marketplacePage;}
     if(!p.startsWith('/customer/')&&!state.activeCompany)return companyPicker();
     if(!navAllowed(p))return problem('Your company role does not grant access to this screen.');
+    if(window.ReleaseTools){const toolsPage=ReleaseTools.page(p);if(toolsPage!==null)return toolsPage;}
     if(window.Commercial){const commercialPage=Commercial.page(p);if(commercialPage!==null)return commercialPage;}
     if(window.SIA){const siaPage=SIA.page(p);if(siaPage!==null)return siaPage;}
     const automationPage=window.Automation?.page(p);if(automationPage!==null&&automationPage!==undefined)return automationPage;
@@ -137,7 +140,7 @@ window.Account = (() => {
     const destination=Journey.destination();
     if(state.user)return {created:false,signedIn:true,next:audience==='distributor'?'/distributor/onboarding':destination||'/customer/dashboard'};
     if(!state.csrfToken)throw new Error(state.error||'Your security session is unavailable. Refresh the page before continuing.');
-    await api('/auth/register','POST',{name:data.name,email:data.email,password:data.password});
+    await api('/auth/register','POST',{name:data.name,email:data.email,password:data.password,...(Organization.registrationToken?.()?{invitationToken:Organization.registrationToken()}: {})});
     await refresh({...options,deferRender:options.deferRender&&Boolean(document.querySelector('[data-onboarding-form]'))});
     const signedIn=Boolean(state.user)&&!state.error;
     const next=signedIn?(Organization.hasInvitation()?'/invitation':audience==='distributor'?'/distributor/onboarding':destination||'/customer/dashboard'):

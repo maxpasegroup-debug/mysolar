@@ -11,6 +11,10 @@ const production = process.env.NODE_ENV === 'production';
 let origin;try{origin=new URL(process.env.APP_ORIGIN||'http://localhost:3000');}catch{throw new Error('APP_ORIGIN must be a valid HTTP(S) origin');}
 if (origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash || !['http:', 'https:'].includes(origin.protocol)) throw new Error('APP_ORIGIN must be an HTTP(S) origin');
 if (production && origin.protocol !== 'https:') throw new Error('Production requires HTTPS APP_ORIGIN');
+const encryptionKey=process.env.DATA_ENCRYPTION_KEY||'';
+if(encryptionKey&&!/^[a-f0-9]{64}$/i.test(encryptionKey))throw new Error('DATA_ENCRYPTION_KEY must be a 32-byte hex key');
+const scanUrl=process.env.FILE_SCAN_URL||'';
+if(scanUrl){try{const u=new URL(scanUrl);if(u.protocol!=='https:'||u.username||u.password||u.hash||u.search)throw Error();}catch{throw new Error('FILE_SCAN_URL must be an operator-configured HTTPS endpoint without credentials or query parameters');}}
 const secret = process.env.SESSION_SECRET || '';
 if (secret.length < 64 || /replace|placeholder|example/i.test(secret)) throw new Error('Set a random SESSION_SECRET of at least 64 characters');
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
@@ -26,7 +30,14 @@ const invitationDelivery=process.env.INVITATION_DELIVERY||'email';
 const mail=mailSettings();
 if(!['email','manual'].includes(invitationDelivery)||(production&&invitationDelivery==='manual'))throw new Error('Manual invitations are restricted to development');
 export const config = Object.freeze({
-  production, origin: origin.origin, secret,
+  production, origin: origin.origin, secret, dataEncryptionKey:encryptionKey,
+  fileScanUrl:scanUrl,fileScanKey:process.env.FILE_SCAN_KEY||'',fileQuotaBytes:integer('FILE_QUOTA_BYTES',104857600,2097152,1073741824),
+  releaseId:(process.env.APP_RELEASE||'').slice(0,100)||null,
+  opsAlertsEnabled:process.env.OPS_ALERTS_ENABLED==='true',
+  opsAlertRecipient:process.env.OPS_ALERT_RECIPIENT||'',
+  dbWarningBytes:integer('DB_WARNING_BYTES',1073741824,1048576,Number.MAX_SAFE_INTEGER),
+  requireVerifiedEmail:process.env.AUTH_REQUIRE_VERIFIED_EMAIL==='true',
+  requirePrivilegedMfa:process.env.AUTH_REQUIRE_PRIVILEGED_MFA==='true',
   port: integer('PORT', 3000, 1, 65535),
   databaseUrl: process.env.DATABASE_URL,
   databaseSSL: process.env.DATABASE_SSL === 'require',

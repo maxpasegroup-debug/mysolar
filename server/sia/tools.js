@@ -6,7 +6,7 @@ import * as purchase from '../purchase/service.js';
 import { assistance } from '../purchase/assistance.js';
 import { ownRecord } from '../operations/customer.js';
 import * as ops from '../operations/core.js';
-import { businessOverview } from '../operations/read.js';
+import { businessOverview,priorityWork } from '../operations/read.js';
 const money=value=>{const n=BigInt(value??0);return 'INR '+(n/100n).toString()+'.'+(n<0n?-(n%100n):n%100n).toString().padStart(2,'0');};
 const clean=value=>{const text=String(value??'').replace(/[\u0000-\u001f\u007f]/g,' ');return text.length>1600?text.slice(0,1550)+' [Excerpt; open source for full content.]':text;};
 const json=value=>clean(JSON.stringify(value));
@@ -69,6 +69,7 @@ export async function gather(db,ctx,tool,input){
   ask('Which recorded updates or supporting references should the distributor clarify? Project, order and payment statuses remain separate.');
  }else if(tool==='business'){
   if(ctx.permissions.includes('automation.read')){const reminders=(await db.query("SELECT count(*) FILTER(WHERE status='dead')::int AS failed,count(*) FILTER(WHERE status IN ('pending','retry','running'))::int AS waiting FROM automation_jobs WHERE company_id=$1",[ctx.companyId])).rows[0];add('Automated reminders: '+reminders.waiting+' waiting; '+reminders.failed+' exhausted deliveries. Review and explicitly approve any retry or rule change.','Authorized reminder delivery records','/distributor/automation');ask('Which failed reminders need review, and which existing records need a human follow-up?');}
+  for(const group of await priorityWork(db,ctx))for(const r of group.items.slice(0,2))add(group.title+': '+r.label+'; recorded due date '+(r.due_date||'not supplied')+'. Open the existing workflow to review before acting.','Current permission-scoped exception',reference(group.kind,r.id));
   const overview=await businessOverview(db,ctx);for(const card of overview.cards)add(`${card.label}: ${card.money?money(card.value):card.value}.`,'Current authorized application aggregate',card.kind==='enquiries'?'/distributor/leads':card.kind==='quotations'?'/distributor/quotations':card.kind==='invoices'?'/distributor/accounts':'/distributor/'+card.kind);
   const stats=async(kind,label,condition)=>{try{ops.readPermission(ctx,kind);}catch{return;}const b=new Bindings(),where=ops.scope(ctx,kind,b);where.push(condition);const r=(await db.query(`SELECT count(*)::int AS count FROM ${ops.definitions[kind][0]} r WHERE ${where.join(' AND ')}`,b.values)).rows[0];add(label+': '+r.count+'.','Current authorized application aggregate','/distributor/'+(kind==='leads'?'crm':kind));};
   await stats('leads','New leads created in the last 7 days',"r.created_at>=now()-interval '7 days'");await stats('leads','Open leads created at least 14 days ago',"r.created_at<=now()-interval '14 days' AND r.stage NOT IN ('won','lost')");

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import {privilegedProtection} from '../auth/protection.js';
 import { transaction,audit } from '../db/pool.js';
 import { requireUser,csrf,lockedUser } from '../auth/sessions.js';
 import { permissionsFor } from '../permissions.js';
@@ -17,6 +18,7 @@ export async function withPlatform(req,permission,work){
     if(!grant.rowCount)throw new HttpError(403,'PLATFORM_ACCESS_DENIED','Platform operator privileges are required.');
     const permissions=await permissionsFor(db,grant.rows[0].role_id);
     if(!permissions.includes(permission))throw new HttpError(403,'PERMISSION_DENIED','This platform action is not allowed.');
+    await privilegedProtection(db,req,user);
     return work(db,{userId:user.id,permissions});
   });
 }

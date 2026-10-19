@@ -62,12 +62,12 @@ export async function connectedJourney(t,{db,a,b,customer,stranger,companyA,prod
   }
   assert.equal(success(await customer.request('/customer/experience/exports/invoices/'+invoice)).commercial.total_paise,quotation.total_paise);
   const csv=await customer.request('/customer/experience/exports/orders/'+order+'?format=csv');assert.equal(csv.status,200);assert.match(csv.headers.get('content-type'),/text\/csv/);assert.ok(csv.data.includes('TEST-CONNECTED-ORDER'));
-  assert.equal((await customer.request('/customer/experience/exports/orders/'+order+'?format=html')).status,400);
+  assert.equal((await customer.request('/customer/experience/exports/orders/'+order+'?format=html')).status,200);assert.equal((await customer.request('/customer/experience/exports/orders/'+order+'?format=pdf')).status,400);
   assert.equal((await customer.request('/customer/experience/exports/orders/'+order+'?companyId='+companyA)).status,400);
   const notifications=success(await customer.request('/customer/operations/notifications'));assert.ok(notifications.items.some(n=>n.record_id===project));assert.ok(notifications.items.some(n=>n.record_id===invoice));
   const quotationNotice=notifications.items.find(n=>n.source==='workflow'&&n.version_id);assert.ok(quotationNotice);success(await customer.request('/customer/operations/notifications/workflow/'+quotationNotice.id+'/read','POST',{}));
   const overview=success(await customer.request('/customer/experience/overview'));assert.ok(overview.sections.some(s=>s.key==='projects'));assert.ok(overview.sections.some(s=>s.key==='service'));
-  const documents=success(await customer.request('/customer/experience/documents/orders/'+order));assert.equal(documents.fileAvailable,false);assert.deepEqual(documents.exportFormats,['json','csv']);
+  const documents=success(await customer.request('/customer/experience/documents/orders/'+order));assert.equal(documents.fileAvailable,false);assert.deepEqual(documents.exportFormats,['json','csv','html']);
  });
  await t.test('connected journey: service resolution is shared explicitly while document references and staff notes stay private',async()=>{
   success(await a.request('/companies/current/operations/record/orders/'+order+'/documents','POST',{operationKey:randomUUID(),title:'[TEST] Private installation document',reference:'https://private.invalid/PRIVATE-DOCUMENT',documentDate:null,notes:'PRIVATE-DOCUMENT-NOTES'}),201);

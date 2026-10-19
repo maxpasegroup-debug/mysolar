@@ -20,10 +20,10 @@ test('resolver uses the current company subscription, never browser plan claims'
  await assert.rejects(requireStaffEntitlement({query:async()=>({rows:[]})},'company-a','part_time_sales'),e=>e.code==='PRO_REQUIRED');
  await requireStaffEntitlement({query:()=>assert.fail('Ordinary employee must not require PRO')},'company-a','sales');
 });
-test('PRO draft terms enforce authorized price without modifying other tiers',()=>{
+test('PRO draft terms accept configured pricing without rewriting historical tiers',()=>{
  const terms={pricePaise:'599900',currency:'INR',interval:'monthly',taxMode:'exclusive'};
  validateGrowthTerms('pro',terms);validateGrowthTerms('elite',{pricePaise:'1'});validateGrowthTerms('free',{pricePaise:'0'});
- for(const change of [{pricePaise:'5999'},{currency:'USD'},{interval:'annual'},{taxMode:'inclusive'}])assert.throws(()=>validateGrowthTerms('pro',{...terms,...change}));
+ for(const change of [{pricePaise:'5999'},{currency:'USD'},{interval:'annual'},{taxMode:'inclusive'}])validateGrowthTerms('pro',{...terms,...change});assert.throws(()=>validateGrowthTerms('pro',{...terms,interval:'weekly'}));
 });
 test('executive details are bounded, do not grant roles and preserve account identity',()=>{
  const d=staffDetails({name:'Local executive',state:'Kerala',city:'Kochi',territory:'Ernakulam',phone:'+91 9000000000'},'part_time_sales');
@@ -40,7 +40,7 @@ test('growth screens escape names, disable non-PRO creation and expose real task
  const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const account={user:{id:'user'},activeCompany:{id:'company'},session:{permissions:['members.manage','invitations.manage','tasks.manage']}};
  const ctx={window:{},document:{addEventListener(){}},Account:account,escapeHTML:escape,location:{hash:'#/distributor/team'},URLSearchParams,icon:()=>'',link:(p,l)=>`<a href="#${escape(p)}">${l}</a>`,Organization:{deliveryFields:()=>''}};vm.createContext(ctx);vm.runInContext(await readFile(new URL('../src/growth.js',import.meta.url),'utf8'),ctx);
- const G=ctx.window.Growth,base={growth:{enabled:false},members:[]};let html=G.team(base);assert.match(html,/<fieldset disabled>/);assert.match(html,/₹5,999/);assert.match(html,/Discuss a PRO upgrade/);
+ const G=ctx.window.Growth,base={growth:{enabled:false},members:[]};let html=G.team(base);assert.match(html,/<fieldset disabled>/);assert.match(html,/Review assigned plan terms/);assert.match(html,/Discuss a PRO upgrade/);
  html=G.team({...base,growth:{enabled:true},members:[{id:'membership',user_id:'user-a',name:'<script>',email:'test@example.invalid',role:'part_time_sales',status:'active',staff_details:{},staff_revision:1}]});assert.match(html,/&lt;script&gt;/);assert.match(html,/tasks\?assignee=user-a/);assert.doesNotMatch(html,/<fieldset disabled>/);
 });
 test('company action guard blocks direct partner requests without PRO and preserves reads/revocation',async()=>{

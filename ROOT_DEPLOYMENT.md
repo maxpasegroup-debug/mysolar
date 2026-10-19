@@ -34,3 +34,7 @@ The assistant performed no commit, push or deployment. Local `main` is ahead of 
 Observed results: **233 automated tests passed with zero failures/skips**, **180 browser checks passed**, and **783 static checks passed**. The lower counts versus the previous release reflect removed staging tests/scripts; a new configuration regression checks the legacy-mode startup refusal. Logs: `.verification/root-consolidation-db.log`, `root-consolidation-browser.log` and `root-consolidation-static.log`. The disposable PostgreSQL cluster was stopped afterward. No database migration was executed against a persistent or remote database. Runtime/import reference inspection found no remaining dependency on deleted staging files.
 
 These local checks do not establish production readiness, real email receipt, live onboarding or remote environment deletion.
+
+## Eight-phase programme update
+
+See `RELEASE_PROGRAMME_HANDOFF.md` for the new migrations 013–020 and local evidence, and `RELEASE_OPERATIONS_RUNBOOK.md` for supervised workers, encryption, feature rollout and rollback. The checked-in Railway pre-deploy/readiness settings are unchanged. Their effective remote settings were not inspected or changed in this programme. Pushing a deployment-connected branch can automatically deploy code and execute the configured pre-deploy migration command; review that release separately.

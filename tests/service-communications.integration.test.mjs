@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import nodemailer from 'nodemailer';
+import {connectedFixture} from './helpers/connected-fixture.mjs';
+test('email reminders require verified consent and recheck opt-out before SMTP',{skip:!process.env.TEST_DATABASE_URL,timeout:120000},async t=>{
+ const messages=[];const {db,a,customer,enquiryId,quote}=await connectedFixture(t,{beforeStart(){t.mock.method(nodemailer,'createTransport',()=>({async sendMail(message){messages.push(message);return {accepted:[message.to]};}}));process.env.SMTP_HOST='127.0.0.1';process.env.SMTP_USER='test';process.env.SMTP_PASSWORD='test-only';process.env.MAIL_FROM='test@example.invalid';}});
+ const {planRule,tick}=await import('../server/automation/engine.js'),{mailTick}=await import('../server/mail-queue.js');await db.query('UPDATE users SET email_verified_at=now() WHERE id=$1',[customer.user.id]);assert.equal((await customer.request('/reminders/preferences','PUT',{enabled:true,email:true,kinds:['quotation']})).status,200);
+ const rule=revision=>({revision,enabled:true,email:true,customers:true,hour:8,leadDays:14,confirm:true,reason:'[TEST] reviewed reminder and email channels'});assert.equal((await a.request('/companies/current/automation/rules/quotation','PUT',rule(0))).status,200);
+ const plan=async()=>{const r=(await db.query("SELECT id FROM automation_rules WHERE kind='quotation'")).rows[0];await db.query('BEGIN');try{await planRule(db,r.id);await db.query('COMMIT');}catch(e){await db.query('ROLLBACK');throw e;}await db.query("UPDATE automation_jobs SET available_at=now() WHERE status='pending'");await tick();};
+ await plan();assert.equal((await db.query("SELECT count(*)::int AS n FROM mail_jobs WHERE kind='reminder'")).rows[0].n,1);await mailTick();assert.equal(messages.length,1);assert.doesNotMatch(messages[0].text,/PRIVATE-OFFER-COST|11800/);
+ const q=(await a.request('/companies/current/enquiries/'+enquiryId+'/quotations','POST',quote(2)));assert.equal(q.status,201);assert.equal((await a.request('/companies/current/quotations/'+q.data.id+'/actions','POST',{revision:1,action:'send'})).status,200);assert.equal((await a.request('/companies/current/automation/rules/quotation','PUT',rule(1))).status,200);await plan();await customer.request('/reminders/preferences','PUT',{enabled:true,email:false,kinds:['quotation']});await mailTick();assert.equal(messages.length,1);assert.equal((await db.query("SELECT count(*)::int AS n FROM mail_jobs WHERE kind='reminder' AND status='cancelled'")).rows[0].n,1);
+});

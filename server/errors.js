@@ -18,6 +18,7 @@ export function errorHandler(error, req, res, next) {
   if (error.type === 'entity.too.large') { status = 413; code = 'REQUEST_TOO_LARGE'; message = 'This request is too large.'; }
   if (error.code === '23505') { status = 409; code = 'CONFLICT'; message = 'These details could not be saved. Please check them or sign in to your existing account.'; }
   if (['42P01','42703'].includes(error.code)) { status = 503; code = 'SERVICE_NOT_READY'; message = 'The service is being set up. Please try again shortly or contact support.'; }
+  if(status>=500)void import('./db/pool.js').then(({pool})=>pool.query('INSERT INTO operational_events(code) VALUES($1)',[diagnosticCauses[error.code]||'REQUEST_FAILED'])).catch(()=>{});
   if (status >= 500) console.error(JSON.stringify({ event: 'request_error', requestId: req.requestId, code: 'INTERNAL_ERROR', cause: diagnosticCauses[error.code] || 'UNEXPECTED_ERROR' }));
   res.status(status).json({ error: { code, message, requestId: req.requestId } });
 }

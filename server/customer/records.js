@@ -1,3 +1,4 @@
+import {printRecord} from '../print-record.js';
 import {Router} from 'express';
 import {requireUser} from '../auth/sessions.js';
 import {withCustomer,ownEnquiry,quoteRecord,items,customerQuote,effective} from '../purchase/service.js';
@@ -23,7 +24,7 @@ customerRecords.get('/journeys/:id',async(req,res)=>{v.body(req.query,[]);const 
  return result;
 }));});
 customerRecords.get('/exports/:kind/:id',async(req,res)=>{
- v.body(req.query,['format'],[]);const kind=v.choice(req.params.kind,kinds,'record type'),id=v.uuid(req.params.id),format=v.choice(req.query.format||'json',['json','csv'],'export format');
+ v.body(req.query,['format'],[]);const kind=v.choice(req.params.kind,kinds,'record type'),id=v.uuid(req.params.id),format=v.choice(req.query.format||'json',['json','csv','html'],'export format');
  const data=await withCustomer(req,permission(kind),async(db,user)=>{
   const record=kind==='quotations'?customerQuote(await quoteRecord(db,id,{user})):await ownRecord(db,user,kind,id);
   const lines=kind==='quotations'?await items(db,id):record.terms?.items||record.snapshot?.terms?.items||[];
@@ -33,5 +34,6 @@ customerRecords.get('/exports/:kind/:id',async(req,res)=>{
   const totals=kind==='invoices'?(await db.query('SELECT coalesce(sum(amount_paise),0)::text AS amount,count(*)::int AS count FROM customer_collections WHERE company_id=$1 AND invoice_id=$2',[record.company_id,id])).rows[0]:null;return recordExport(kind,record,{lines,milestones,collections,totals});
  });
  res.set({'Cache-Control':'private, no-store','Content-Disposition':`attachment; filename="mysolar-${kind}-${id}.${format}"`,'X-Content-Type-Options':'nosniff'});
+ if(format==='html'){res.set('Content-Disposition','inline').type('html').send(printRecord(data));return;}
  if(format==='csv')res.type('text/csv; charset=utf-8').send('\uFEFF'+csvExport(data));else res.type('application/json').send(JSON.stringify(data,null,2));
 });

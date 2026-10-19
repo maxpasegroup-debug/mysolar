@@ -13,7 +13,7 @@ test('isolated PostgreSQL: password recovery, token expiry/replay and session re
  process.env.SMTP_HOST='127.0.0.1';process.env.SMTP_USER='isolated-fixture';process.env.SMTP_PASSWORD='isolated-fixture-not-a-real-credential';process.env.MAIL_FROM='test@example.invalid';
  await env.start();const owner=env.client(),other=env.client(),anonymous=env.client();await owner.register('recover-owner');await other.register('recover-other');const company=await owner.createCompany('recover-company');await anonymous.session();
  const password='Integration-only password 123!',changed='Changed integration password 456!';
- const waitFor=async predicate=>{for(let i=0;i<150;i++){if(await predicate())return;await delay(20);}assert.fail('Recovery worker did not finish within its isolated test deadline.');};
+ const waitFor=async predicate=>{for(let i=0;i<150;i++){await (await import('../server/mail-queue.js')).mailTick();await db.query("UPDATE mail_jobs SET available_at=now() WHERE status='retry'");if(await predicate())return;await delay(20);}assert.fail('Recovery worker did not finish within its isolated test deadline.');};
  const resetToken=message=>new URLSearchParams(new URL(message.text.match(/http:\/\/localhost:3000\/#[^\s]+/)[0]).hash.split('?')[1]).get('token');
  const recover=email=>anonymous.request('/auth/recover','POST',{email});
  let first,second,secondSession;
@@ -42,9 +42,9 @@ test('isolated PostgreSQL: password recovery, token expiry/replay and session re
   assert.equal((await owner.request('/auth/login','POST',{email:'recover-owner@example.invalid',password})).status,401);assert.equal((await owner.request('/auth/login','POST',{email:'recover-owner@example.invalid',password:changed})).status,200);await owner.session();assert.equal(owner.company.id,company);assert.equal(owner.company.role,'owner');
   const events=(await db.query("SELECT metadata FROM audit_events WHERE action LIKE 'auth.%'")).rows;for(const raw of [first,second])assert.ok(!JSON.stringify(events).includes(raw));
  });
- await t.test('mail delivery failure invalidates token without exposing transport errors or credentials',async()=>{
-  failDelivery=true;const failures=(await db.query("SELECT count(*)::int AS n FROM audit_events WHERE action='auth.recovery_delivery_failed'")).rows[0].n;const r=await recover(other.user.email);assert.equal(r.status,202);assert.doesNotMatch(JSON.stringify(r.data),/isolated-fixture|transport failure/);
-  await waitFor(async()=>(await db.query("SELECT count(*)::int AS n FROM audit_events WHERE action='auth.recovery_delivery_failed'")).rows[0].n>failures);assert.equal((await db.query('SELECT count(*)::int AS n FROM password_reset_tokens WHERE user_id=$1',[other.user.id])).rows[0].n,0);failDelivery=false;
+ await t.test('mail retries exhaust safely without exposing transport errors or credentials',async()=>{
+  failDelivery=true;const failures=(await db.query("SELECT count(*)::int AS n FROM mail_jobs WHERE status='dead'")).rows[0].n;const r=await recover(other.user.email);assert.equal(r.status,202);assert.doesNotMatch(JSON.stringify(r.data),/isolated-fixture|transport failure/);
+  await waitFor(async()=>(await db.query("SELECT count(*)::int AS n FROM mail_jobs WHERE status='dead'")).rows[0].n>failures);assert.equal((await db.query("SELECT count(*)::int AS n FROM mail_jobs WHERE user_id=$1 AND status='dead'",[other.user.id])).rows[0].n,1);failDelivery=false;
  });
  await t.test('disabled accounts cannot consume a previously issued valid reset link',async()=>{
   const count=outbox.length;await recover(other.user.email);await waitFor(()=>outbox.length>count);const raw=resetToken(outbox.at(-1));await db.query("UPDATE users SET status='disabled' WHERE id=$1",[other.user.id]);

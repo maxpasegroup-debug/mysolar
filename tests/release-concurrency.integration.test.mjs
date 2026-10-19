@@ -1,0 +1,16 @@
+﻿import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {writeFile} from 'node:fs/promises';
+import {isolatedApp} from './helpers/isolated-app.mjs';
+import {connectedFixture} from './helpers/connected-fixture.mjs';
+import {migrationManifest} from '../server/db/migrations.js';
+test('concurrent migration runners upgrade one isolated schema exactly once',{skip:!process.env.TEST_DATABASE_URL,timeout:120000},async t=>{
+ const f=await isolatedApp(t);await f.applyMigrations(f.db,{through:'012_automation.sql'});const original=(await f.db.query('SELECT name,checksum FROM schema_migrations ORDER BY name')).rows,c=await f.connection();try{await Promise.all([f.applyMigrations(f.db),f.applyMigrations(c)]);}finally{await c.end();}const history=(await f.db.query('SELECT name,checksum FROM schema_migrations ORDER BY name')).rows;assert.deepEqual(history,await migrationManifest());assert.deepEqual(history.slice(0,original.length),original);assert.equal((await f.db.query('SELECT count(*)::int AS n FROM pg_constraint WHERE connamespace=$1::regnamespace AND NOT convalidated',[f.schema])).rows[0].n,0);
+});
+test('bounded concurrent reads and imports preserve authorization and idempotency',{skip:!process.env.TEST_DATABASE_URL,timeout:120000},async t=>{
+ const {a,b,db,companyA,base}=await connectedFixture(t);assert.equal((await fetch(base+'/api/public/products')).status,200);assert.equal((await fetch(base+'/api/public/vendors')).status,200);
+ const preview=await a.request('/companies/current/imports/preview','POST',{kind:'contacts',csv:'name,email\n[TEST] concurrent customer,concurrent@example.invalid'});assert.equal(preview.status,200);const data={digest:preview.data.digest,confirm:true};const imported=await Promise.all([a.request('/companies/current/imports/'+preview.data.id+'/confirm','POST',data),a.request('/companies/current/imports/'+preview.data.id+'/confirm','POST',data)]);for(const r of imported)assert.equal(r.status,200,JSON.stringify(r.data));assert.equal(imported[0].data.results[0].id,imported[1].data.results[0].id);assert.equal((await db.query("SELECT count(*)::int AS n FROM company_contacts WHERE company_id=$1 AND email='concurrent@example.invalid'",[companyA])).rows[0].n,1);
+ const started=performance.now();let count=0;for(let batch=0;batch<3;batch++){const results=await Promise.all([a,a,b,b].map(client=>client.request('/companies/current/operations/dashboard')));for(const r of results){assert.equal(r.status,200,JSON.stringify(r.data));assert.ok(r.data.priorities.every(g=>g.items.length<=4));count++;}}const elapsedMs=Math.round(performance.now()-started);assert.ok(elapsedMs<15000,'Local bounded dashboard reads exceeded 15 seconds');await writeFile('.verification/release-concurrency.json',JSON.stringify({scope:'Local fictional fixture; not a production capacity or SLA claim',requests:count,parallelism:4,elapsedMs},null,2));
+ const saved=await a.request('/companies/current/website/draft','POST',{revision:0,template:'clean',title:'[TEST] company',introduction:'[TEST] introduction',about:'[TEST] about'});assert.equal(saved.status,201);await assert.rejects(db.query("UPDATE website_versions SET template='warm' WHERE id=$1",[saved.data.id]),/immutable/);
+});

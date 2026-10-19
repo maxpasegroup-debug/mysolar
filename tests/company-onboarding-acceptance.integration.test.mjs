@@ -14,9 +14,15 @@ test('complete company onboarding and independent login for every supported staf
  await db.query("INSERT INTO platform_admin_grants(user_id,reason) VALUES($1,'[LOCAL TEST] independent reviewer fixture')",[operator.user.id]);
  let companyId;
  const setup=async()=>(await owner.request('/companies/current/setup')).data;
+ await t.test('unsupported supplier type and browser-supplied activation cannot create tenants',async()=>{
+  const details={name:'[LOCAL TEST] rejected company',city:'[TEST] City',email:'rejected@example.invalid',phone:''};
+  assert.equal((await owner.request('/companies','POST',{...details,businessType:'supplier'})).status,400);
+  assert.equal((await owner.request('/companies','POST',{...details,businessType:'both',lifecycle:'active'})).status,400);
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM companies')).rows[0].n,0);
+ });
  await t.test('owner creates one draft tenant and completes the three supported setup steps',async()=>{
-  assert.equal((await owner.request('/companies','POST',{name:'[LOCAL TEST] MY Solar Solutions',city:'[TEST] City',email:'acceptance-company@example.invalid',phone:''})).status,201);await owner.session();companyId=owner.company.id;
-  assert.equal(owner.company.role,'owner');assert.equal(owner.company.lifecycle,'draft');assert.deepEqual((await owner.session()).data.platformPermissions,[]);
+  assert.equal((await owner.request('/companies','POST',{businessType:'both',name:'[LOCAL TEST] MY Solar Solutions',city:'[TEST] City',email:'acceptance-company@example.invalid',phone:''})).status,201);await owner.session();companyId=owner.company.id;
+  assert.equal((await setup()).profile.business_type,'both');assert.equal(owner.company.role,'owner');assert.equal(owner.company.lifecycle,'draft');assert.deepEqual((await owner.session()).data.platformPermissions,[]);
   assert.equal((await owner.request('/companies/current/onboarding/submit','POST',{revision:(await setup()).company.revision})).status,409);
   const profile={revision:(await setup()).company.revision,legalName:'[LOCAL TEST] Fictional legal name',displayName:'[LOCAL TEST] MY Solar Solutions',businessType:'both',contactPerson:'[LOCAL TEST] Owner',email:'acceptance-company@example.invalid',phone:'0000000000',address:'[LOCAL TEST] Fictional address',state:'[TEST] State',district:'[TEST] District',pin:'682001',language:'en',website:'https://mysolar.solutions/'};
   assert.equal((await owner.request('/companies/current/onboarding/profile','PUT',profile)).status,200);
@@ -30,6 +36,7 @@ test('complete company onboarding and independent login for every supported staf
   assert.equal((await owner.request('/platform/companies/'+companyId+'/actions','POST',action)).status,403);
   assert.equal((await operator.request('/platform/companies/'+companyId+'/actions','POST',action)).status,200);
   const data=await setup();assert.equal(data.company.lifecycle,'active');assert.equal(data.company.storefront_published,false);
+  const daily=await owner.request('/companies/current/operations/dashboard');assert.equal(daily.status,200);assert.deepEqual(daily.data.company,{lifecycle:'active',marketplace_status:'not_requested',storefront_published:false});
   assert.equal((await db.query('SELECT count(*)::int AS n FROM company_subscriptions')).rows[0].n,0);
  });
  await t.test('PRO-only role is blocked until explicit authorized trial assignment',async()=>{
@@ -53,6 +60,7 @@ test('complete company onboarding and independent login for every supported staf
   assert.equal((await employee.request('/auth/logout','POST',{})).status,200);await employee.session();assert.equal(employee.user,null);
   assert.equal((await employee.request('/auth/login','POST',{email:role+'@example.invalid',password})).status,200);const session=await employee.session();assert.equal(employee.user.id,id);assert.equal(employee.company.id,companyId);assert.equal(employee.company.role,role);
   assert.deepEqual(session.data.permissions,await permissionsFor(db,role));assert.deepEqual(session.data.platformPermissions,[]);
+  assert.equal((await employee.request('/companies/current/operations/dashboard')).data.company,null);
   assert.equal((await employee.request('/companies/current/team')).status,403);assert.equal((await employee.request('/platform/companies')).status,403);
   assert.equal((await employee.request('/companies/current/invitations','POST',{email:'forbidden@example.invalid',role:'sales',delivery:'share'})).status,403);
   actors.push({employee,id,role});

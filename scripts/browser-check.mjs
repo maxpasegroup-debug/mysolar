@@ -98,7 +98,23 @@ try{
   await writeFile(resolve(output,mode+'.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
  }
  await navigate('/distributor/setup?step=profile');await wait(`!!document.querySelector('.workspace-presets')`);
- check('three business presets remain accessible radio choices',await evaluate(`document.querySelectorAll('.workspace-presets input[type=radio]').length===3 && document.querySelector('.workspace-presets input[value=installer]').checked`));
+ check('distributor and installer are accessible multi-select choices',await evaluate(`document.querySelectorAll('.workspace-presets input[type=checkbox]').length===2 && document.querySelector('.workspace-presets input[value=installer]').checked`));
+
+ for(const width of [360,390,768,1024,1280,1440]){
+  await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<768});
+  await navigate('/distributor/dashboard');await wait(`!!document.querySelector('.workspace-facilities')`);
+  check(`setup dashboard shows three truthful facilities at ${width}px`,await evaluate(`document.querySelectorAll('.facility-card').length===3 && document.querySelector('main').textContent.includes('Setup in progress') && !document.querySelector('main').textContent.includes('Company active') && document.documentElement.scrollWidth<=innerWidth+2`));
+  if([390,1440].includes(width))await writeFile(resolve(output,'setup-dashboard-'+width+'.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+  await navigate('/distributor/public-profile');await wait(`document.querySelector('main').textContent.includes('Prepare your listing')`);
+  check(`public profile manager at ${width}px preserves publication boundary`,await evaluate(`!document.querySelector('main a[href^="#/storefront?company="]') && document.documentElement.scrollWidth<=innerWidth+2`));
+  await navigate('/distributor/white-label');await wait(`!!document.querySelector('main a[href^="https://wa.me/"]')`);
+  check(`consultation is an unsubmitted WhatsApp draft at ${width}px`,await evaluate(`document.querySelector('main a[href^="https://wa.me/"]').href.startsWith('https://wa.me/918136906653?text=') && document.querySelector('main').textContent.includes('does not submit or record') && document.documentElement.scrollWidth<=innerWidth+2`));
+ }
+
+ await navigate('/distributor/onboarding');await wait(`document.querySelector('main').textContent.includes('Resume your existing company')`);
+ check('existing-company onboarding offers resume before creating a duplicate',await evaluate(`!!document.querySelector('main a[href="#/distributor/dashboard"]') && !document.getElementById('account-company-create')`));
+ await navigate('/distributor/onboarding?new=1');await wait(`!!document.getElementById('account-company-create')`);
+ check('company entry uses stage two with two supported business choices',await evaluate(`document.querySelectorAll('.business-journey li').length===3 && document.querySelector('.business-journey li[aria-current]').textContent.includes('Your company') && document.querySelectorAll('.workspace-presets input[type=checkbox]').length===2 && !document.querySelector('.workspace-presets').textContent.includes('Supplier')`));
  growthFixture='customer-journey';await evaluate('Account.refresh()');
  for(const width of [360,390,768,1024,1280,1440]){
   await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<768});

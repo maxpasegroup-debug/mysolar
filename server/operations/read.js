@@ -68,5 +68,6 @@ operations.get('/dashboard',async(req,res)=>{res.json(await c.context(req,async(
  const data=await businessOverview(db,ctx);
  let outstanding=null;
  if(c.has(ctx,'finance.read'))outstanding=(await db.query("SELECT coalesce(sum(greatest(0,i.total_paise-(SELECT coalesce(sum(x.amount_paise),0) FROM customer_collections x WHERE x.company_id=i.company_id AND x.invoice_id=i.id))),0)::text AS amount FROM customer_invoices i WHERE i.company_id=$1 AND i.status='issued'",[ctx.companyId])).rows[0].amount;
- return {...data,gettingStarted:await gettingStarted(db,ctx),priorities:await priorityWork(db,ctx),outstanding,asOf:new Date().toISOString(),scope:'Current saved records for this company and your authorized assignments. Due dates use India time. Counts cover recorded history; priority lists show up to four records per section.'};
+ const company=ctx.permissions.includes('company.setup.read')?(await db.query('SELECT lifecycle,marketplace_status,storefront_published FROM companies WHERE id=$1',[ctx.companyId])).rows[0]:null;
+ return {...data,company,gettingStarted:await gettingStarted(db,ctx),priorities:await priorityWork(db,ctx),outstanding,asOf:new Date().toISOString(),scope:'Current saved records for this company and your authorized assignments. Due dates use India time. Counts cover recorded history; priority lists show up to four records per section.'};
 }));});

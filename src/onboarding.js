@@ -8,6 +8,7 @@ const Onboarding = (() => {
   const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   const markup = () => '<dialog id="onboarding-dialog" class="ob-dialog" aria-labelledby="ob-title" aria-describedby="ob-intro"></dialog>';
   function fields() {
+    if(Account.session.pinEmailAvailable)return MobileAuth.signupFields('ob');
     return `<label for="ob-name">Your name<input id="ob-name" name="name" autocomplete="name" maxlength="100" required aria-describedby="ob-name-error"><small id="ob-name-error" class="ob-field-error"></small></label><label for="ob-email">Email address<input id="ob-email" name="email" type="email" autocomplete="email" maxlength="254" required aria-describedby="ob-email-error"><small id="ob-email-error" class="ob-field-error"></small></label><label for="ob-password">Password<input id="ob-password" name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required aria-describedby="ob-password-hint ob-password-error"><small id="ob-password-hint" class="ob-hint">Use 12–128 characters, as required by your account.</small><small id="ob-password-error" class="ob-field-error"></small></label>`;
   }
   function formMarkup(mode) {
@@ -49,7 +50,7 @@ const Onboarding = (() => {
   }
   function validate(form) {
     let first;
-    for(const input of form.querySelectorAll('input')) {
+    for(const input of form.querySelectorAll('input:not([type=hidden])')) {
       const valid=input.checkValidity()&&(input.name!=='name'||Boolean(input.value.trim()));
       input.setAttribute('aria-invalid',String(!valid));
       form.querySelector('#'+input.id+'-error').textContent=valid?'':input.validity.valid?'Enter your name.':input.validationMessage;
@@ -73,6 +74,7 @@ const Onboarding = (() => {
     const values=Object.fromEntries(new FormData(form));
     try {
       const result=await content[mode].register(values);
+      if(result.pending){if(epoch!==version||!dialog?.isConnected)return;setBusy(form,false);MobileAuth.requestConfirmation(form,result);return;}
       if(epoch!==version||!dialog?.isConnected)return;
       setBusy(form,false);
       form.reset();
@@ -86,7 +88,7 @@ const Onboarding = (() => {
       if(epoch!==version||!dialog?.isConnected)return;
       setBusy(form,false);
       const feedback=form.querySelector('#ob-feedback');feedback.textContent=error.message||'Account creation could not be confirmed. Please try again.';feedback.focus();
-    } finally {values.password='';}
+    } finally {values.password='';values.pin='';values.otp='';}
   }
   function cleanup() {
     version++;controller?.abort();controller=null;

@@ -429,3 +429,7 @@ New forward migrations are 013–020. Use only `npm run db:migrate` as the suppo
 Email verification, recovery and automatic invitation delivery now require a separate `DATA_ENCRYPTION_KEY` and a running `npm run worker:mail` process, in addition to existing mail configuration. Optional operational monitoring runs through `npm run worker:monitor`; reminders continue through `npm run worker:reminders`. These are separate supervised processes, not work performed by the web process. Configure and verify them before an approved live release. Uploads remain blocked without the configured scanning gateway and encryption key. Custom-domain provisioning/traffic remain disabled.
 
 Use `npm run test:localdb` for isolated database verification and `npm run test:browser` for local browser checks. `.verification/` and `.pilot/` are excluded from deployment and source control. Local evidence does not establish inbox receipt, remote recovery or production readiness.
+
+## Mobile/PIN authentication (optional rollout)
+
+See AUTH_REPAIR_HANDOFF.md for migration 021, mobile/PIN signup and login, verified-email OTP reset, existing-account enrollment and rollback limitations. Configure an independent AUTH_PIN_PEPPER, encrypted mail delivery and the mail worker before enabling this experience. Existing email/password access remains available. Mobile login identifiers are not SMS-verified. No production migration/deployment is implied by local implementation.

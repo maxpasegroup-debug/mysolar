@@ -1,5 +1,49 @@
 # Signup and authentication repair - latest update 20 October 2026
 
+## Authorized production migration and Git release preparation (2026-10-20T16:47:18.071Z)
+
+The owner explicitly authorized all required migrations plus committing/pushing this release. Verified the existing approved Railway backup pre-signin-migrations-2026-10-20 (03c813d5-485c-4e9d-8e0f-dee4cd6cc318) remains listed without expiry. No additional paid backup/resource was created and no restore exercise is claimed. The production target is mysolar / production, using its existing Postgres service.
+
+Applied only 021_mobile_pin.sql through the existing npm run db:migrate runner in the running application container, after transferring the exact new release migration with a checksum guard. No historical migration was rewritten. Before: 20 entries; after: **21 entries, all committed-release checksums match, zero unvalidated constraints**. The initial guard safely stopped because the local Windows copy of migration 020 has CRLF whereas committed/deployed bytes have LF; comparison was corrected to exact Git release bytes without changing that historical file. Public /readyz returned 200 ready and /api/auth/session returned 200 with an anonymous security session after migration.
+
+Production configuration inspection (presence only) found AUTH_PIN_PEPPER unset, DATA_ENCRYPTION_KEY unset, mail credential/sender present, and no recorded mail-worker heartbeat. Variables, secrets, mail services, DNS and domain traffic were not changed. Therefore mobile/PIN activation and real email delivery remain blocked even after this code is released; existing email/password access stays available. Effective Railway deployment metadata still lacks the pre-deploy command/readiness health check; remote deployment settings were not altered. No account was registered, private workflow tested or email sent live. Git push may trigger the existing Railway GitHub deployment integration; code-release verification is separate from the successful schema migration.
+
+## 20 October: mobile number and six-digit PIN (local implementation)
+
+This section supersedes the older sign-in presentation when optional PIN configuration is enabled. Existing account IDs, memberships, permissions, sessions, CSRF/origin rules, audit records and encrypted mail delivery are reused. No production configuration, deployment, migration, account or outbound message was changed in this work.
+
+### User journeys
+
+- New customer/business signup: name, recovery email and Indian mobile; request an email code; enter it and choose a six-digit PIN. No account is created before email proof. Company setup/activation remains separate. Existing invitation destinations are retained and registration grants no company membership or administrator role.
+- Sign in: mobile and masked PIN. Email/password remains available for existing accounts. An enrolled authenticator/recovery code is requested only after primary validation. Back clears credentials and the stale MFA message.
+- Existing account: sign in, verify its email in Account Security, prove current password/PIN and enrolled MFA, choose mobile and confirm an emailed code/new PIN. Enrollment signs out all sessions. Contact phone fields are never automatically promoted to login identities. Duplicate users/phones are not merged.
+- Forgot PIN: submit sign-in mobile; generic response does not disclose account/email existence. A valid recovery-email code changes the PIN and revokes all sessions. It never signs the user in or removes MFA. Next login still requires enrolled MFA.
+- Initial scope is Indian mobile numbers beginning 6 through 9, normalized to +91. Ten-digit local numbers or country-prefixed numbers with formatting are accepted. **Mobile ownership is not verified by SMS.** No SMS/WhatsApp provider was added; number disputes/recycling still need an operator policy.
+
+### Security and storage
+
+Forward migration **021_mobile_pin.sql** adds unique user-linked mobile_credentials, session-bound pin_challenges, constraints/indexes and the pin_otp mail kind. Historical migrations are untouched. Signup/invitation context and queued messages are encrypted. PINs are HMAC-peppered then Argon2id-hashed. OTP hashes are keyed and bound to purpose/challenge. PIN-only accounts store an inaccessible random legacy password verifier to preserve the existing NOT NULL schema; this is never exposed/delivered. Verified email recovery may explicitly establish a legacy password later.
+
+Email codes expire in ten minutes, permit five comparisons and are single-use. Resending invalidates the older code. Challenge/session/purpose binding, current verified email, credential revision and authenticated ownership are checked where relevant. Failure counters commit on rejected comparisons. Five incorrect PIN/MFA attempts lock that credential for fifteen minutes across IPs/restarts. Additional IP/mobile/email/user budgets and request cooldown buckets remain; per-account reauthentication throttling covers existing security endpoints. New PINs reject identical/consecutive digits. Role/tenant authorization and MFA remain authoritative.
+
+The worker cancels invalid jobs, scrubs terminal message payloads and may deliver at least once; duplicate email does not allow duplicate redemption. db:cleanup deletes expired/consumed challenges. Until cleanup runs, those rows remain stored; no automatic deletion is claimed. Existing audit retention is unchanged. Audit metadata excludes PINs, OTPs and personal message contents.
+
+### Operator rollout (not executed)
+
+1. Review/commit the release. Verify a current recoverable backup before authorizing schema deployment. Earlier production authorization covered 009-020, not this new migration.
+2. Apply through the supported **npm run db:migrate** runner on the explicitly approved target, never manual SQL. The manifest now expects 21 entries. Verify effective Railway pre-deploy/health-check settings against repository configuration; the prior discrepancy has not been changed. Keep PIN configuration empty initially for legacy access.
+3. Configure an independent random 32-byte hexadecimal **AUTH_PIN_PEPPER** via the operator secret manager and back it up. Never reuse session/encryption secrets. Rotation invalidates existing PIN verifiers and outstanding codes, requiring a planned recovery process.
+4. OTP signup/reset also require **DATA_ENCRYPTION_KEY**, existing Resend/SMTP credentials, verified **MAIL_FROM**, and a supervised **npm run worker:mail** process. Do not rotate an existing encryption key without migrating encrypted data. Resend uses the existing server-only SMTP adapter.
+5. With separate authorization, verify actual inbox receipt and signup/reset/MFA/session revocation using an approved recipient. Mock SMTP acceptance is not evidence of Resend inbox delivery. Strong owner/platform MFA policies require a working recovery procedure.
+
+Without the pepper, the default remains email/password and PIN endpoints safely report unavailable. Missing mail/encryption blocks PIN setup/reset, while already-enabled PIN login still works with the pepper. Removing the pepper is only an emergency legacy-UI fallback: PIN-only users may need verified email password recovery or restored PIN configuration. Do not drop credential tables during app rollback.
+
+### Files and verification
+
+Backend: server/auth/pin-routes.js, pin-security.js, shared registration.js, existing auth routes/protection, config, mail queue, cleanup and migration 021. Frontend: src/mobile-auth.js, account/security/onboarding integration, index.html, accounts.css, static server allowlist and service-worker cache v18. Configuration/tests: .env.example, isolated secret scrubbing, PIN integration, authentication/config tests and browser scenarios. No dependencies added.
+
+Final local checks: **257 automated tests passed, zero failed/skipped**, using a disposable PostgreSQL cluster; **336 browser checks passed** across six widths with fictional API fixtures. Coverage includes concurrent normalized mobile claims, email proof, expiry/replay/resend/attempt budgets, durable lockout, existing email/password, disabled configuration, session revocation, retained MFA and correct company-role restoration. An inherited stale MFA feedback issue was fixed. Browser screenshots include .verification/browser/mobile-pin-390.png. **1,033 static checks passed.** Protected deep-link sign-in also preserves its conditional MFA step. These results are not production readiness, real email delivery or mobile ownership verification.
+
 ## 20 October: simple sign-in and production schema repair
 
 The initial customer and distributor sign-in form now contains registered email (the existing account identifier), password, Sign in and Forgot password only. Removed the marketing side panel, account-creation/demo links, unconditional authenticator field and duplicate setup error. Accounts with enrolled MFA receive a separate, focused code step only after the backend verifies the password. Back clears the password. No password or MFA material is stored in browser storage. Recovery, role guards and safe journey destinations remain in use. Static cache version is v17.

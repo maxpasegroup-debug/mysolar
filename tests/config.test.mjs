@@ -6,6 +6,7 @@ unitEnvironment();
 const configurationModule=new URL('../server/config.js',import.meta.url).href;
 const run=overrides=>spawnSync(process.execPath,['--input-type=module','-e','import '+JSON.stringify(configurationModule)],{cwd:new URL('../',import.meta.url),env:{...process.env,...overrides},encoding:'utf8',windowsHide:true});
 test('configuration: valid isolated test settings load',()=>assert.equal(run({}).status,0));
+test('configuration: mobile PIN pepper is optional but malformed secrets fail without disclosure',()=>{assert.equal(run({AUTH_PIN_PEPPER:''}).status,0);assert.equal(run({AUTH_PIN_PEPPER:'ab'.repeat(32)}).status,0);const r=run({AUTH_PIN_PEPPER:'private-pin-pepper-marker'});assert.notEqual(r.status,0);assert.match(r.stderr,/AUTH_PIN_PEPPER/);assert.doesNotMatch(r.stderr,/private-pin-pepper-marker/);});
 
 test('configuration: removed private-environment mode fails closed before startup',()=>{const r=run({STAGING_MODE:'true'});assert.notEqual(r.status,0);assert.match(r.stderr,/Legacy staging mode is unsupported/);});
 test('configuration: missing mandatory secret fails without its value',()=>{const r=run({SESSION_SECRET:''});assert.notEqual(r.status,0);assert.match(r.stderr,/SESSION_SECRET/);});

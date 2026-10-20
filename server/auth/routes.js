@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { randomUUID } from 'node:crypto';
+import {pinRoutes} from './pin-routes.js';
+import {pinAvailable,pinEmailAvailable} from './pin-security.js';
+import {createIdentity,validateInvitation} from './registration.js';
 import { mailTransport as transport } from '../mail.js';
 import { pool, transaction, audit } from '../db/pool.js';
 import {enqueueMail} from '../mail-queue.js';
@@ -14,10 +16,10 @@ import { csrf, csrfToken, requireUser, issueSession, setSessionCookie, clearSess
 export const auth = Router();
 const recoveryMessage = 'If this address belongs to an active account and delivery is available, recovery instructions will be provided by email. Delivery is not guaranteed.';
 let dummyHash;
-const badInvitation=()=>new HttpError(400,'INVALID_INVITATION','This invitation is unavailable or belongs to another address.');
+
 
 async function sessionView(req) {
-  if (!req.session.user_id) return { user:null, companies:[], activeCompany:null, permissions:[], platformPermissions:[], recoveryAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey), csrfToken:csrfToken(req.sessionToken) };
+  if (!req.session.user_id) return { user:null, companies:[], activeCompany:null, permissions:[], platformPermissions:[], pinAvailable:pinAvailable(),pinEmailAvailable:pinEmailAvailable(),recoveryAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey), csrfToken:csrfToken(req.sessionToken) };
   return transaction(async db => {
     const user = await lockedUser(db,req);
     const memberships = await db.query(`SELECT c.id,c.name,c.city,c.status,c.lifecycle,m.role_id AS role,r.label AS role_label,
@@ -32,7 +34,7 @@ async function sessionView(req) {
       permissions:activeCompany ? await permissionsFor(db,activeCompany.role) : [],
       customerPermissions:await permissionsFor(db,'customer'),
       platformPermissions:admin.rowCount ? await permissionsFor(db,admin.rows[0].role_id) : [],
-      recoveryAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey),csrfToken:csrfToken(req.sessionToken)
+      pinAvailable:pinAvailable(),pinEmailAvailable:pinEmailAvailable(),recoveryAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey),csrfToken:csrfToken(req.sessionToken)
     };
   });
 }
@@ -49,18 +51,12 @@ auth.post('/register',csrf,async(req,res)=>{
   if(req.session.user_id) throw new HttpError(409,'ALREADY_SIGNED_IN','Sign out before creating another account.');
   const input=v.body(req.body,['name','email','password','invitationToken'],['name','email','password']);
   const name=v.text(input.name,'name',100), email=v.email(input.email), password=v.password(input.password);
-  let invited=false;
-  if(input.invitationToken!==undefined){const raw=v.text(input.invitationToken,'invitation',43,43);if(!/^[A-Za-z0-9_-]{43}$/.test(raw))throw badInvitation();
-    const result=await pool.query(`SELECT 1 FROM (SELECT company_id,email,invited_by,expires_at,status FROM company_invitations WHERE token_hash=$1 UNION ALL SELECT company_id,email,invited_by,expires_at,status FROM customer_access_invitations WHERE token_hash=$1) i JOIN companies c ON c.id=i.company_id JOIN company_memberships m ON m.company_id=c.id AND m.user_id=i.invited_by JOIN users u ON u.id=m.user_id WHERE i.email=$2 AND i.status='pending' AND i.expires_at>now() AND c.status='active' AND c.lifecycle='active' AND m.status='active' AND u.status='active' AND EXISTS(SELECT 1 FROM role_permissions p WHERE p.role_id=m.role_id AND p.permission_id='invitations.manage')`,[digest(raw),email]);
-    if(!result.rowCount)throw badInvitation();invited=true;await limit(req,'invited-register',digest(raw),3,3600);
-  }
+  const invited=await validateInvitation(pool,input.invitationToken,email);
+  if(invited)await limit(req,'invited-register',digest(input.invitationToken),3,3600);
   await limit(req,invited?'invited-register-ip':'register-ip',req.ip,invited?30:5,3600);
   const hash=await hashPassword(password);
   const issued=await transaction(async db=>{
-    const id=randomUUID();
-    await db.query('INSERT INTO users(id,email,display_name,password_hash) VALUES($1,$2,$3,$4)',[id,email,name,hash]);
-    await db.query('INSERT INTO customer_profiles(user_id) VALUES($1)',[id]);
-    await audit(db,{actor:id,action:'account.registered',target:id});
+    const id=await createIdentity(db,{name,email,passwordHash:hash});
     return issueSession(db,id,req.session.token_hash);
   });
   setSessionCookie(res,issued);res.status(201).json({message:'Account created. You are signed in.'});
@@ -135,4 +131,5 @@ auth.post('/reset-password',csrf,async(req,res)=>{
   clearSessionCookie(res);res.json({message:'Password changed. All account sessions were signed out. Please sign in again.'});
 });
 
+auth.use('/pin',pinRoutes);
 auth.use(accountProtection);

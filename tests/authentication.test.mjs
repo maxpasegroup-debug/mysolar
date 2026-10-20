@@ -33,6 +33,12 @@ test('customer and distributor authentication against isolated PostgreSQL', {ski
    assert.equal((await customer.request('/customer/profile')).status,200);
    assert.equal((await customer.request('/platform/commercial/settings')).status,403);
   });
+  await t.test('unconfigured PIN rollout leaves legacy access usable and sends no email',async()=>{
+   const s=await customer.request('/auth/session');assert.equal(s.data.pinAvailable,false);assert.equal(s.data.pinEmailAvailable,false);
+   assert.equal((await customer.request('/auth/pin/login','POST',{mobile:'9876504321',pin:'483729'})).status,503);
+   assert.equal((await customer.request('/auth/pin/reset/request','POST',{mobile:'9876504321'})).status,503);
+   assert.equal((await db.query("SELECT 1 FROM mail_jobs WHERE kind='pin_otp'")).rowCount,0);
+  });
   await t.test('customer logout revokes the cookie and login restores the same account',async()=>{
    const oldCookie=customer.cookie,id=customer.user.id;assert.equal((await customer.request('/auth/logout','POST',{})).status,200);
    customer.cookie=oldCookie;assert.equal((await customer.request('/auth/session')).data.user,null);

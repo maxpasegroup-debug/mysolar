@@ -13,6 +13,8 @@ if (origin.username || origin.password || origin.pathname !== '/' || origin.sear
 if (production && origin.protocol !== 'https:') throw new Error('Production requires HTTPS APP_ORIGIN');
 const encryptionKey=process.env.DATA_ENCRYPTION_KEY||'';
 if(encryptionKey&&!/^[a-f0-9]{64}$/i.test(encryptionKey))throw new Error('DATA_ENCRYPTION_KEY must be a 32-byte hex key');
+const pinPepper=process.env.AUTH_PIN_PEPPER||'';
+if(pinPepper&&!/^[a-f0-9]{64}$/i.test(pinPepper))throw new Error('AUTH_PIN_PEPPER must be an independent 32-byte hex secret');
 const scanUrl=process.env.FILE_SCAN_URL||'';
 if(scanUrl){try{const u=new URL(scanUrl);if(u.protocol!=='https:'||u.username||u.password||u.hash||u.search)throw Error();}catch{throw new Error('FILE_SCAN_URL must be an operator-configured HTTPS endpoint without credentials or query parameters');}}
 const secret = process.env.SESSION_SECRET || '';
@@ -30,7 +32,7 @@ const invitationDelivery=process.env.INVITATION_DELIVERY||'email';
 const mail=mailSettings();
 if(!['email','manual'].includes(invitationDelivery)||(production&&invitationDelivery==='manual'))throw new Error('Manual invitations are restricted to development');
 export const config = Object.freeze({
-  production, origin: origin.origin, secret, dataEncryptionKey:encryptionKey,
+  production, origin: origin.origin, secret, dataEncryptionKey:encryptionKey, pinPepper,
   fileScanUrl:scanUrl,fileScanKey:process.env.FILE_SCAN_KEY||'',fileQuotaBytes:integer('FILE_QUOTA_BYTES',104857600,2097152,1073741824),
   releaseId:(process.env.APP_RELEASE||'').slice(0,100)||null,
   opsAlertsEnabled:process.env.OPS_ALERTS_ENABLED==='true',

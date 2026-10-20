@@ -1,3 +1,21 @@
+# Signup and authentication repair - latest update 20 October 2026
+
+## 20 October: simple sign-in and production schema repair
+
+The initial customer and distributor sign-in form now contains registered email (the existing account identifier), password, Sign in and Forgot password only. Removed the marketing side panel, account-creation/demo links, unconditional authenticator field and duplicate setup error. Accounts with enrolled MFA receive a separate, focused code step only after the backend verifies the password. Back clears the password. No password or MFA material is stored in browser storage. Recovery, role guards and safe journey destinations remain in use. Static cache version is v17.
+
+Read-only inspection of the running production service confirmed only migrations 001–008 were applied although deployed commit 91f0ab12acd3eae21db4814c1c57363e5f7e6a97 expected 20 entries. The users.email_verified_at/sessions.mfa_verified_at columns and account_security table were absent. This caused the screenshot's SERVICE_NOT_READY response after signup; the account should not be registered again to repair it.
+
+The owner explicitly authorized checking backups/applying migrations, then separately authorized one new backup when none existed. Production PITR was disabled and the initial backup list was empty. Created one approved backup on the existing Postgres volume: pre-signin-migrations-2026-10-20, ID 03c813d5-485c-4e9d-8e0f-dee4cd6cc318, listed by Railway at 2026-10-20T15:13:49.337Z (20:43 IST), referenced size 869 MB. No restore exercise or PITR enablement is claimed. Manual backup storage may be billed by Railway.
+
+Existing 001–008 checksums matched before the change. Ran the existing npm run db:migrate through the running production mysolar container, applying 009–020 without rewriting historical migrations. Post-check: 20 entries, all expected checksums matched and zero unvalidated constraints. Public https://mysolar.solutions/readyz returned 200 ready, and /api/auth/session returned 200 with a valid anonymous security session. No private token/cookie values were printed. No user or company account was created, no password was changed, no invitation/recovery mail was sent, and no code deployment, environment-variable, DNS or domain-routing change was made.
+
+Local checks: 18 authentication/recovery/MFA integration checks passed against disposable PostgreSQL; 317 browser checks passed across six widths, including two-field login, conditional MFA and back navigation; 993 static checks passed. Screenshots are ignored local evidence: .verification/browser/signin-390.png and signin-1440.png. A browser-fixture race was corrected by draining a pending focus refresh before changing fictional roles; backend permissions were not relaxed.
+
+Remaining operational issues: effective production deployment metadata still shows no pre-deploy migration command or readiness health check, whereas railway.json specifies npm run db:migrate and /readyz. Remote configuration was not changed; resolve that discrepancy before future schema releases. DATA_ENCRYPTION_KEY is unset in production, so queued recovery/verification/invitation mail and MFA enrolment still need the key and supervised mail worker. This is separate from the repaired schema failure and was not bypassed. The simplified sign-in code is local and needs the owner's commit/push/release; no commit or push was performed here.
+
+## Historical incident record
+
 # Signup and authentication repair — 17 October 2026
 
 ## Confirmed cause and live repair

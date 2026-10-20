@@ -81,6 +81,7 @@ auth.post('/login',csrf,async(req,res)=>{
   const issued=await transaction(async db=>{
     const locked=await db.query('SELECT password_hash,status FROM users WHERE id=$1 FOR UPDATE',[record.id]);
     if(locked.rows[0].status!=='active'||locked.rows[0].password_hash!==record.password_hash) throw new HttpError(401,'INVALID_CREDENTIALS','The email or password is incorrect.');
+    if(input.code===undefined&&(await db.query('SELECT 1 FROM account_security WHERE user_id=$1 AND secret IS NOT NULL',[record.id])).rowCount)throw new HttpError(403,'MFA_REQUIRED','Enter your authenticator or recovery code to finish signing in.');
     const mfa=await verifySecondFactor(db,record.id,input.code);
     const memberships=await db.query(`SELECT m.company_id FROM company_memberships m JOIN companies c ON c.id=m.company_id WHERE m.user_id=$1 AND m.status='active' AND (c.status='active' OR m.role_id='owner') ORDER BY m.created_at LIMIT 2`,[record.id]);
     await audit(db,{actor:record.id,action:'auth.login'});

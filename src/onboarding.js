@@ -6,6 +6,7 @@ const Onboarding = (() => {
   };
   let dialog, controller, audience, busy=false, success=false, closing=false, returnFocus, chooseAudience, version=0;
   const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const submitLabel = form => form?.elements.challenge?'Verify email and create account':Account.session.pinEmailAvailable?'Send email code':content[audience].submit;
   const markup = () => '<dialog id="onboarding-dialog" class="ob-dialog" aria-labelledby="ob-title" aria-describedby="ob-intro"></dialog>';
   function fields() {
     if(Account.session.pinEmailAvailable)return MobileAuth.signupFields('ob');
@@ -13,7 +14,7 @@ const Onboarding = (() => {
   }
   function formMarkup(mode) {
     const c=content[mode];
-    return `<div class="ob-shell"><div class="ob-decoration" aria-hidden="true"><span class="ob-sun"></span><span class="ob-grid"></span></div><div class="ob-top"><button type="button" class="ob-back" data-ob-back>← Choose your journey</button><button type="button" class="ob-close" data-ob-close aria-label="Close onboarding">${icon('close')}</button></div><div class="ob-heading"><span class="ob-badge">${icon(c.symbol)}${c.badge}</span><h2 id="ob-title" tabindex="-1">${c.heading}</h2><p id="ob-intro">${c.introduction}</p></div>${mode==='distributor'?Workspace.journey(1)+'<p class="ob-separation">One account, one company, your workspace. Select distributor, installer, or both in the next step.</p>':''}<form data-onboarding-form="${mode}" novalidate>${fields()}<div id="ob-feedback" class="ob-feedback" role="alert" tabindex="-1"></div><button type="submit" class="ob-submit">${c.submit}${icon('arrow')}</button><p class="ob-progress" role="status" aria-live="polite"></p></form><div class="ob-links">${link(c.login(),'Already registered? Log in')}${link('/products','Explore solar first')}</div><p class="ob-boundary">${mode==='distributor'?'This creates your personal account. It does not create or approve a company or grant distributor permissions.':'Customer signup creates your personal customer profile. It grants no company or platform administration privileges.'}</p><div class="ob-switch"><span>${mode==='customer'?'Here for your solar business?':'Looking for solar for your property?'}</span><button type="button" data-ob-switch="${mode==='customer'?'distributor':'customer'}">${mode==='customer'?'Choose distributor onboarding':'Choose customer onboarding'}</button></div></div>`;
+    return `<div class="ob-shell"><div class="ob-decoration" aria-hidden="true"><span class="ob-sun"></span><span class="ob-grid"></span></div><div class="ob-top"><button type="button" class="ob-back" data-ob-back>← Choose your journey</button><button type="button" class="ob-close" data-ob-close aria-label="Close onboarding">${icon('close')}</button></div><div class="ob-heading"><span class="ob-badge">${icon(c.symbol)}${c.badge}</span><h2 id="ob-title" tabindex="-1">${c.heading}</h2><p id="ob-intro">${c.introduction}</p></div>${mode==='distributor'?Workspace.journey(1)+'<p class="ob-separation">One account, one company, your workspace. Select distributor, installer, or both in the next step.</p>':''}<form data-onboarding-form="${mode}" novalidate>${fields()}<div id="ob-feedback" class="ob-feedback" role="alert" tabindex="-1"></div><button type="submit" class="ob-submit">${submitLabel()}${icon('arrow')}</button><p class="ob-progress" role="status" aria-live="polite"></p></form><div class="ob-links">${link(c.login(),'Already registered? Log in')}${link('/products','Explore solar first')}</div><p class="ob-boundary">${mode==='distributor'?'This creates your personal account. It does not create or approve a company or grant distributor permissions.':'Customer signup creates your personal customer profile. It grants no company or platform administration privileges.'}</p><div class="ob-switch"><span>${mode==='customer'?'Here for your solar business?':'Looking for solar for your property?'}</span><button type="button" data-ob-switch="${mode==='customer'?'distributor':'customer'}">${mode==='customer'?'Choose distributor onboarding':'Choose customer onboarding'}</button></div></div>`;
   }
   function animateIn() {
     if(reduced()||!dialog.animate)return;
@@ -63,8 +64,10 @@ const Onboarding = (() => {
     form.querySelectorAll('input').forEach(input=>input.readOnly=value);
     dialog.querySelectorAll('button').forEach(button=>button.disabled=value);
     dialog.querySelectorAll('a').forEach(anchor=>{anchor.inert=value;});
-    form.querySelector('.ob-submit').innerHTML=value?'<span class="ob-spinner" aria-hidden="true"></span>Creating your account…':content[audience].submit+icon('arrow');
-    form.querySelector('.ob-progress').textContent=value?'Creating your account securely. Please wait before closing.':'';
+    const confirming=Boolean(form.elements.challenge);
+    const pendingLabel=confirming?'Verifying your email…':Account.session.pinEmailAvailable?'Requesting your email code…':'Creating your account…';
+    form.querySelector('.ob-submit').innerHTML=value?'<span class="ob-spinner" aria-hidden="true"></span>'+pendingLabel:submitLabel(form)+icon('arrow');
+    form.querySelector('.ob-progress').textContent=value?(confirming?'Verifying your code and creating your account securely.':Account.session.pinEmailAvailable?'Requesting a code for your recovery email. Your account is not created yet.':'Creating your account securely. Please wait before closing.'):'';
   }
   async function submit(form) {
     if(busy||closing||success||!validate(form))return;

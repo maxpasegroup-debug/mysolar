@@ -2,6 +2,14 @@
 
 This runbook covers the eight-phase local development programme. It does not authorize deployment, production migrations, messages, domain changes or paid services. No staging application was added. Historical acceptance reports retain their original scope; local verification is not live acceptance.
 
+## Authentication release update: 22 October 2026
+
+The owner separately authorized this production authentication release, configuration and exactly one mail-worker service. The historical programme scope above does not describe these newly authorized operations. Production web migration/readiness settings have now been saved explicitly for this environment: npm run db:migrate before npm start, /readyz with a 120-second timeout. Verify the final deployment manifest and health result rather than assuming the legacy railway.json was applied. Railway now deprecates new legacy config-file settings; review a future supported infrastructure configuration separately.
+
+The existing mysolar-mail service is deployed with npm run worker:mail, no HTTP health check or pre-deploy migrations, restart ALWAYS and sleep disabled. Its eight application settings reference production/mysolar; equality was verified without printing secrets. A database mail heartbeat and idle runtime logs were observed. DATA_ENCRYPTION_KEY and AUTH_PIN_PEPPER are configured on the web service; do not replace them to troubleshoot. The PIN secret is not needed by the mail-only worker. Preserve the local protected key backup and arrange an operator-controlled secure recovery copy; the Windows-profile-bound local backup is not an off-site recovery plan.
+
+Existing password accounts remain usable. Their owners must verify their email and enroll a sign-in mobile/PIN in Account security. Do not infer sign-in identity from business/profile contact phones or create duplicate accounts. Real email receipt, SMTP acceptance, local tests and successful PIN reset are separate acceptance results. Record each honestly; never reset a real person's PIN to produce a passing check.
+
 ## Before an approved live release
 
 1. Review the intended diff and immutable release identifier. Inspect the actual Railway service source branch, root directory, build/start commands, pre-deploy command and readiness path. Checked-in `railway.json` specifies `npm run db:migrate` and `/readyz`; effective Railway overrides were not verified here.
@@ -59,3 +67,11 @@ On release failure: capture the release ID/request reference, pause affected wor
 Scheduled cleanup removes expired verification/pending-MFA material, scrubs expired mail, removes terminal mail jobs/attempts and operational error events after 30 days, and removes abandoned preview imports one day after expiry. It must actually be scheduled; no automatic hosting schedule was installed. Completed import/audit history, business data, saved website versions and service history are retained. SIA keeps its existing user/scope deletion behavior. No blanket account-deletion scheduler or retention-compliance certification is claimed.
 
 Legal policy pages remain explicitly marked draft/noindex until the operator approves final responsibilities, contacts and retention terms. Reviewed postal mappings require a legitimate source/import; no national dataset was invented. SMS/WhatsApp automatic delivery, billing checkout, autonomous finance, production capacity certification and client-domain provisioning are not enabled. Manual real-company/customer acceptance remains the owner's responsibility.
+
+## Dedicated mail service: production configuration record (21 October 2026)
+
+The authorized service is mysolar-mail in the existing production project, using the same repository and database. Use start command npm run worker:mail, no public domain, no HTTP health check, no pre-deploy migration command, ALWAYS restart and sleep disabled. Store settings through supported Railway service configuration; do not add a new railwayConfigFile path rejected by the provider. Source should be connected only after its variables are verified.
+
+Reference the web service's NODE_ENV, APP_ORIGIN, DATABASE_URL, DATABASE_SSL, SESSION_SECRET, DATA_ENCRYPTION_KEY, RESEND_API_KEY, MAIL_FROM and the existing SMTP overrides. Keep secret values out of files and reports. The mail worker does not need AUTH_PIN_PEPPER merely to send mail. Verify the mail heartbeat plus a real queued message and approved recipient receipt before enabling PIN. A received direct SMTP check proves that message only.
+
+The generated key backup in the ignored .verification directory uses Windows CurrentUser DPAPI. Preserve this Windows profile and add a separate operator-controlled secure backup. Do not regenerate or overwrite an existing active key to resolve login/configuration problems.

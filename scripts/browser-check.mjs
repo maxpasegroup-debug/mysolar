@@ -105,6 +105,17 @@ try{
  await navigate('/register?journey=distributor');await wait(`!!document.querySelector('#account-register [name=mobile]')`);await evaluate(`(()=>{const f=document.querySelector('#account-register');f.elements.name.value='[LOCAL FIXTURE] Owner';f.elements.email.value='owner@example.invalid';f.elements.mobile.value='9876504321';f.requestSubmit();})()`);await wait(`!!document.querySelector('#account-register [name=otp]')`);check('business signup requires email OTP before PIN and account completion',await evaluate(`!!document.querySelector('#account-register [name=pin]') && document.activeElement.name==='otp' && !document.querySelector('[name=password]') && document.body.textContent.includes('delivery not confirmed')`));
 
 
+ await navigate('/');
+ for(const audience of ['customer','distributor'])for(const width of [360,390,768,1024,1280,1440]){
+  await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<768});
+  await evaluate(`Onboarding.open(${JSON.stringify(audience)})`);
+  check('PIN onboarding fields and email-first action '+audience+' at '+width+'px',await evaluate(`(()=>{const f=document.querySelector('[data-onboarding-form]');return Array.from(f.querySelectorAll('input')).map(x=>x.name).join(',')==='name,email,mobile' && f.querySelector('.ob-submit').textContent.includes('Send email code') && !f.querySelector('[name=password]') && document.documentElement.scrollWidth<=innerWidth+2;})()`));
+  await evaluate(`(()=>{const f=document.querySelector('[data-onboarding-form]');f.elements.name.value='[LOCAL FIXTURE] Signup';f.elements.email.value='signup@example.invalid';f.elements.mobile.value='9876504321';f.requestSubmit();})()`);
+  await wait(`!!document.querySelector('[data-onboarding-form] [name=otp]')`);
+  check('PIN onboarding waits for email proof '+audience+' at '+width+'px',await evaluate(`(()=>{const f=document.querySelector('[data-onboarding-form]');return f.elements.pin.maxLength===6 && document.activeElement.name==='otp' && !Account.user && f.querySelector('.ob-submit').textContent==='Verify email and create account' && !f.querySelector('[name=password]');})()`));
+  await evaluate(`document.querySelector('[data-ob-close]').click()`);await wait(`!document.querySelector('#onboarding-dialog').open`);
+ }
+
  for(const mode of ['pro','expired']){
   // Drain any focus-initiated refresh before loading the next fictional role.
   growthFixture=mode;await evaluate('(async()=>{await Account.refresh();await Account.refresh();})()');

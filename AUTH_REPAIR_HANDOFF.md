@@ -16,6 +16,16 @@ Railway's status page on 22 October reported recovery of API access and Pro depl
 
 Browser process exit was independently confirmed as zero using cmd.exe redirection (avoiding PowerShell's stderr classification): 360 passed, zero failed. Final syntax and git diff --check succeeded. Release execution and final live evidence are recorded below when available. Older entries describe earlier states and are not current configuration claims.
 
+### Verified production release evidence
+
+Committed and pushed the implementation and regression coverage as 52f1e5bf33f3cd3373cb70f149f70cd116c47fdc. Railway web deployment fee61ed6-de5a-4240-829a-34fda08ac18b and mail deployment 28937313-d886-4917-9916-68d89cf0beb0 both reported SUCCESS on that exact commit. The web deployment manifest confirms /readyz and npm run db:migrate; its build log records a successful readiness check and runtime logs confirm startup. Post-release database inspection confirms exactly 21 migrations with matching checksums and a current idle mail heartbeat. No schema changes were required for activation.
+
+Public /readyz and /api/auth/session returned HTTP 200; pinAvailable and pinEmailAvailable are both true. A fresh live Chromium session passed 10 checks at 390 and 1440 pixels covering public flags, both signup modals, and both sign-in routes. Signup fields are name/recovery email/mobile, with Send email code; sign-in fields are mobile/PIN, with Forgot PIN. No signup or login credentials were submitted by this live browser check. Visually reviewed the final mobile signup screenshot after the opening animation completed. Local screenshot/evidence files remain ignored.
+
+The approved test inbox already had an active account; no duplicate was registered. One public /api/auth/recover request for that approved inbox returned 202 with normal session, origin and CSRF protections. The real mail worker processed its recovery job with attempts=1, status=accepted, last_code=SMTP_ACCEPTED, finished_at=2026-10-22T18:01:32.883Z, and private payload cleared. No password/PIN was changed and the recovery link was not followed. Owner inbox receipt of this queued recovery message remains awaiting confirmation; earlier direct diagnostic receipt is separately confirmed. Live OTP enrollment/reset completion on a real account has not been performed by the agent. No mobile credential exists at this inspection; existing users must enroll rather than expect a contact phone to work immediately.
+
+This evidence establishes the deployed authentication presentation, configuration, queue execution and local security regressions. It does not establish every business feature, actual inbox receipt of this message, full real-account acceptance, an off-site restore test, or resolution of Railway incident credential-rotation recommendations. A follow-up documentation-only commit records these verified results; inspect the latest running commit after its automatic deployment.
+
 ## 21 October 2026: owner saved worker variables; Railway platform incident confirmed
 
 Owner explicitly confirmed saving the eight reference variables in production/mysolar-mail. The agent has not independently read back those values because variable/configuration APIs remain affected. Existing production web release, secrets and business records were not changed in this resumed step.

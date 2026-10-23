@@ -11,16 +11,17 @@ export function areaMatch(bind,q,company='v.id',coverage=null){
   return `EXISTS(SELECT 1 FROM company_service_areas a WHERE ${conditions.join(' AND ')})`;
 }
 export const hasLocation=q=>Boolean(q.state||q.district||q.pin||q.area);
-export async function filterCategories(db){return (await db.query('SELECT c.id,c.parent_id,c.name,c.kind,c.slug,c.attribute_schema FROM catalogue_categories c WHERE c.active AND (c.parent_id IS NULL OR EXISTS(SELECT 1 FROM catalogue_categories parent WHERE parent.id=c.parent_id AND parent.active)) ORDER BY c.parent_id NULLS FIRST,c.name,c.id LIMIT 200')).rows;}
+export async function filterCategories(db){return (await db.query('SELECT c.id,c.parent_id,c.name,c.kind,c.slug,c.attribute_schema,c.discovery_key,c.description,c.localized_names,c.localized_descriptions,c.display_order FROM catalogue_categories c WHERE c.active AND (c.parent_id IS NULL OR EXISTS(SELECT 1 FROM catalogue_categories parent WHERE parent.id=c.parent_id AND parent.active)) ORDER BY c.parent_id NULLS FIRST,c.display_order,c.name,c.id LIMIT 200')).rows;}
 export function productFilter(bind,q,{publicOnly=true}={}){
   const conditions=['true'];
   if(q.search)conditions.push(`raw.search_document @@ websearch_to_tsquery('simple',${bind.add(q.search)})`);
-  if(q.category){const key=bind.add(q.category);conditions.push(`(p.category_id=${key} OR p.subcategory_id=${key})`);}
+  if(q.category){const key=bind.add(q.category);conditions.push(`(p.category_id=${key} OR p.subcategory_id=${key} OR p.category_id IN (SELECT id FROM catalogue_categories WHERE discovery_category_id=${key} AND EXISTS(SELECT 1 FROM catalogue_categories root WHERE root.id=${key} AND root.active)))`);}
   if(q.brand)conditions.push(`lower(p.brand)=${bind.add(normalize(q.brand))}`);
   if(q.kind)conditions.push(`p.kind=${bind.add(q.kind)}`);
-  if(publicOnly&&(q.price||hasLocation(q)||q.service)){
+  if(publicOnly&&(q.price||hasLocation(q)||q.service||q.availability||q.sellers)){
     const offer=['o.product_id=p.id'];
     if(q.price)offer.push(`o.price_mode=${bind.add(q.price)}`);
+    if(q.availability)offer.push(`o.availability=${bind.add(q.availability)}`);
     if(hasLocation(q))offer.push(areaMatch(bind,q,'o.company_id','o.coverage_labels'));
     if(q.service)offer.push(`${bind.add(q.service)}=ANY(v.services)`);
     conditions.push(`EXISTS(SELECT 1 FROM marketplace_offers o JOIN marketplace_vendors v ON v.id=o.company_id WHERE ${offer.join(' AND ')})`);

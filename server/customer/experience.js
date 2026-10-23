@@ -7,6 +7,11 @@ import * as v from '../validation.js';
 import {customerHome} from './home.js';
 import {platformSupport} from '../support.js';
 export const customerExperience=Router();customerExperience.use(requireUser);
+customerExperience.get('/marketplace-context',async(req,res)=>{v.body(req.query,[]);res.json(await withCustomer(req,'customer.profile',async(db,user)=>{
+ const permissions=await permissionsFor(db,'customer');
+ const location=permissions.includes('customer.enquiries.own')?(await db.query("SELECT state,district,pin FROM customer_enquiries WHERE customer_id=$1 AND pin<>'' ORDER BY created_at DESC,id LIMIT 1",[user.id])).rows[0]||null:null;
+ return {location,support:platformSupport};
+}));});
 customerExperience.get('/overview',async(req,res)=>{v.body(req.query,[]);res.json(await withCustomer(req,'customer.profile',async(db,user)=>{
  const permissions=await permissionsFor(db,'customer'),sections=[];const authorized=p=>permissions.includes(p);
  async function section(key,title,from,where,columns,order,href){const values=[user.id];const total=(await db.query(`SELECT count(*)::int AS count ${from} WHERE ${where}`,values)).rows[0].count;if(!total)return;const items=(await db.query(`SELECT ${columns} ${from} WHERE ${where} ORDER BY ${order} LIMIT 4`,values)).rows;sections.push({key,title,total,href,items});}

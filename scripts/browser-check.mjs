@@ -14,6 +14,16 @@ const browser=spawn(executable,['--headless=new','--disable-gpu','--no-first-run
 let ws,growthFixture=null,privatePrintContext=false;
 const fixtureUser='20000000-0000-4000-8000-000000000001',fixtureCompany='10000000-0000-4000-8000-000000000001',fixtureStaff='20000000-0000-4000-8000-000000000002';
 function growthData(path){
+ if(growthFixture?.startsWith('customer-home-')){
+  const mode=growthFixture.slice('customer-home-'.length),permissions=['customer.profile','customer.enquiries.own','customer.quotations.own','customer.orders.own','customer.installation.own'].filter(p=>mode!=='limited'||p!=='customer.quotations.own');
+  if(path==='/api/auth/session')return {user:{id:fixtureUser,name:'[LOCAL FIXTURE] Customer',email:'customer@example.invalid'},companies:[],activeCompany:null,permissions:[],customerPermissions:permissions,platformPermissions:[],csrfToken:'fixture-only',recoveryAvailable:false};
+  if(path==='/api/customer/enquiry-options')return {categories:[],product:null,vendor:null,profile:{phone:null},submissionKey:fixtureCompany};
+  if(path==='/api/customer/experience/overview'&&mode!=='error'){
+   const key={order:'confirmation',installation:'projects',service:'service'}[mode],record={id:fixtureCompany,label:'[LOCAL FIXTURE] Saved record',status:key==='projects'?'active':key==='confirmation'?'awaiting_confirmation':'open',acceptance_mode:'in_app',customer_confirmed_at:null};
+   return {permissions,home:{state:mode==='new'?'new':'existing',asOf:'2026-10-23T06:00:00Z',enquiry:['enquiry','history','limited'].includes(mode)?{id:fixtureCompany,title:'[LOCAL FIXTURE] Home solar request',status:mode==='history'?'closed':'quotation_received',...(mode==='limited'?{}:{quotation_count:2})}:null},companies:[],sections:key?[{key,title:'[LOCAL FIXTURE] Saved records',total:1,href:'/customer/orders',items:[record]}]:[],notifications:[],activity:[]};
+  }
+  return null;
+ }
  if(['signin','mobile-signin'].includes(growthFixture)&&path==='/api/auth/session')return {user:null,companies:[],activeCompany:null,permissions:[],customerPermissions:[],platformPermissions:[],csrfToken:'fixture-only',recoveryAvailable:true,pinAvailable:growthFixture==='mobile-signin',pinEmailAvailable:growthFixture==='mobile-signin'};
  if(growthFixture==='release-tools'){
  if(path==='/api/companies/current/records/quotations/'+fixtureCompany+'/print')return '<!doctype html><html><head><script defer src="'+base+'/src/print-record.js"></script></head><body><h1>[LOCAL FIXTURE] private printable record</h1><button data-print>Print / save as PDF</button></body></html>';
@@ -115,6 +125,23 @@ try{
   check('PIN onboarding waits for email proof '+audience+' at '+width+'px',await evaluate(`(()=>{const f=document.querySelector('[data-onboarding-form]');return f.elements.pin.maxLength===6 && document.activeElement.name==='otp' && !Account.user && f.querySelector('.ob-submit').textContent==='Verify email and create account' && !f.querySelector('[name=password]');})()`));
   await evaluate(`document.querySelector('[data-ob-close]').click()`);await wait(`!document.querySelector('#onboarding-dialog').open`);
  }
+
+ for(const mode of ['new','enquiry','order','installation','service','history']){
+  growthFixture='customer-home-'+mode;await evaluate('(async()=>{await Account.refresh();await Account.refresh();})()');
+  for(const width of [360,390,768,1024,1280,1440]){
+   await send('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:width<768});await navigate('/customer/dashboard');await wait(`!!document.querySelector('[data-customer-home]')`);
+   check('customer home '+mode+' at '+width+'px fits and uses saved state',await evaluate(`document.documentElement.scrollWidth<=innerWidth+2 && document.querySelector('[data-customer-home]').dataset.customerHome==='${mode==='new'?'new':'existing'}' && document.querySelectorAll('.customer-home-action').length===3 && document.querySelector('.customer-home-action[href="/support"]')!==null`));
+   const expected={enquiry:'Compare quotations',order:'Review your order',installation:'Check installation progress',service:'Check service request',history:'View my requests'}[mode];
+   check('customer home '+mode+' at '+width+'px puts the right next action first',await evaluate(mode==='new'?`!document.querySelector('.customer-home-next') && !!document.querySelector('.customer-home-primary[href="#/customer/enquiry/new?guided=1"]') && !document.querySelector('.customer-home').textContent.includes('received 2')`:`(()=>{const n=document.querySelector('.customer-home-next');return n.textContent.includes('${expected}') && !!(n.compareDocumentPosition(document.querySelector('.customer-home-start'))&Node.DOCUMENT_POSITION_FOLLOWING) ${mode==='enquiry'?`&& n.textContent.includes('received 2 quotations') && n.querySelector('.btn').getAttribute('href')==='#/customer/compare?enquiryId=${fixtureCompany}'`:''};})()`));
+   if(['new','enquiry'].includes(mode)&&[390,1440].includes(width))await writeFile(resolve(output,'customer-home-'+mode+'-'+width+'.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+  }
+ }
+ growthFixture='customer-home-limited';await evaluate('(async()=>{await Account.refresh();await Account.refresh();})()');await navigate('/customer/dashboard');await wait(`!!document.querySelector('.customer-home-next')`);check('missing quotation permission is not described as zero quotations',await evaluate(`document.querySelector('.customer-home-next').textContent.includes('updates available to your account') && !document.querySelector('.customer-home-next').textContent.includes('No issued quotation') && !document.querySelector('.customer-home-next').textContent.includes('Compare quotations')`));
+ growthFixture='customer-home-new';await evaluate('(async()=>{await Account.refresh();await Account.refresh();})()');await navigate('/customer/enquiry/new?guided=1');await wait(`document.querySelector('main').textContent.includes('What is solar for?')`);
+ check('guided enquiry starts without a form or automatic submission',await evaluate(`!document.getElementById('purchase-enquiry') && document.querySelectorAll('.customer-home-action').length===3`));
+ for(const choice of ['home','business','unsure']){await navigate('/customer/enquiry/new?guided='+choice);await wait(`!!document.getElementById('purchase-enquiry')`);check('guided '+choice+' reuses private enquiry and recipient review',await evaluate(`(()=>{const f=document.getElementById('purchase-enquiry');return f.elements.service.value==='energy_consultation' && f.elements.projectType.value==='${{home:'rooftop_home',business:'commercial',unsure:'advice'}[choice]}' && f.elements.mode.value==='matching' && f.querySelector('[data-operation=send]').disabled && !!f.elements.pin && !!f.elements.address && !f.querySelector('select[name=categoryId]');})()`));}
+ await navigate('/customer/enquiry/new?guided=__proto__');await wait(`!!document.querySelector('#purchase-enquiry [name=title]')`);check('unsupported guidance value retains the standard editable enquiry',await evaluate(`document.querySelector('#purchase-enquiry [name=title]').type==='text' && !!document.querySelector('#purchase-enquiry select[name=categoryId]')`));
+ growthFixture='customer-home-error';await evaluate('(async()=>{await Account.refresh();await Account.refresh();})()');await navigate('/customer/dashboard');await wait(`!!document.querySelector('main [role=alert]')`);check('failed home request does not show a false new-customer state',await evaluate(`!document.querySelector('[data-customer-home]') && !document.querySelector('.customer-home-action')`));
 
  for(const mode of ['pro','expired']){
   // Drain any focus-initiated refresh before loading the next fictional role.

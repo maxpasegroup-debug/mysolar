@@ -7,3 +7,5 @@
 @media(max-width:500px){.cd-header{gap:8px;padding:8px 10px}.cd-brand{width:100px}.cd-brand img{width:100px}.cd-language{max-width:105px;padding:0 6px;gap:4px}.cd-language .icon{width:15px}.cd-language select{max-width:73px;font-size:11px}.cd-header .cd-bell{width:26px}.cd-profile{min-width:32px}.cd-avatar{width:32px;height:32px;font-size:11px}}
 .cd-help-art img{display:block;width:108px;height:auto}.customer-desktop-shell[dir=rtl] .cd-hero{background-image:linear-gradient(270deg,#fff5e4f5 0%,#fff2dbed 35%,#fff1d61a 80%),url('/assets/dashboard-solar-home.webp')}
 @media(max-width:1099px){.customer-desktop-shell[dir=rtl] .cd-sidebar:not(.open){transform:translateX(100%)}}
+.cd-search-spacer{flex:1;min-width:0}
+@media(max-width:1099px){.cd-search-spacer{display:none}}

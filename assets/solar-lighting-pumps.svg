@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 362 240" fill="none">
+ <defs>
+  <linearGradient id="background" x2="362" y2="240" gradientUnits="userSpaceOnUse"><stop stop-color="#f7f5ee"/><stop offset="1" stop-color="#e8f0ec"/></linearGradient>
+  <linearGradient id="metal" x2="1" y2="1"><stop stop-color="#9da8ac"/><stop offset=".45" stop-color="#e9edef"/><stop offset="1" stop-color="#64747b"/></linearGradient>
+  <linearGradient id="pump" x2="0" y2="1"><stop stop-color="#4785a3"/><stop offset="1" stop-color="#214c65"/></linearGradient>
+ </defs>
+ <path fill="url(#background)" d="M0 0h362v240H0z"/>
+ <ellipse cx="181" cy="211" rx="132" ry="11" fill="#193c4310"/>
+ <!-- Solar street light: panel, lamp, mast and footing. -->
+ <path d="M107 71v134" stroke="url(#metal)" stroke-width="9"/>
+ <path d="M94 205h26v7H94z" fill="#60717a"/>
+ <path d="M107 85h45l13 11" stroke="#596b74" stroke-width="7" stroke-linejoin="round"/>
+ <path d="M143 93h29v8h-29z" fill="#243b48"/>
+ <path d="M145 101h25" stroke="#e5be66" stroke-width="3"/>
+ <path d="m76 38 67 9-14 37-67-9z" fill="#244d70" stroke="#8a9fa8" stroke-width="4"/>
+ <path d="m99 42-14 36m36-33-14 36M70 57l67 9" stroke="#bccdd5" stroke-width="1.4"/>
+ <path d="m149 108 13 22m7-22 6 23" stroke="#d5b563" stroke-width="1.5" opacity=".5"/>
+ <!-- Solar irrigation pump with motor, flanges and delivery pipe. -->
+ <path d="M207 196h100v11H207z" fill="#4c6068"/>
+ <path d="M225 181v18m57-18v18" stroke="#425a67" stroke-width="9"/>
+ <rect x="222" y="133" width="67" height="52" rx="12" fill="url(#pump)" stroke="#26495f" stroke-width="2"/>
+ <path d="M238 141v35m9-35v35m9-35v35m9-35v35m9-35v35" stroke="#90aebe" stroke-width="2"/>
+ <circle cx="218" cy="160" r="24" fill="#346d8b" stroke="#26495f" stroke-width="3"/>
+ <circle cx="218" cy="160" r="10" fill="#aebdc2" stroke="#314e5b" stroke-width="3"/>
+ <path d="M194 160h-19v27h-17" stroke="#7f969e" stroke-width="14" stroke-linejoin="round"/>
+ <path d="M291 159h18v-44h21" stroke="url(#metal)" stroke-width="13" stroke-linejoin="round"/>
+ <path d="M213 130v-12h23v12" fill="#34596a"/>
+ <path d="M332 123c0 0-5 9-5 12a5 5 0 0 0 10 0c0-3-5-12-5-12Z" fill="#5d9db1"/>
+ <circle cx="288" cy="45" r="14" fill="#e8bc58" opacity=".85"/>
+ <path d="M288 22v-5m0 56v-5m-23-23h-5m56 0h-5m-39-16-4-4m40 40-4-4m-32 0-4 4m40-40-4 4" stroke="#d5aa51" stroke-width="2" stroke-linecap="round"/>
+</svg>

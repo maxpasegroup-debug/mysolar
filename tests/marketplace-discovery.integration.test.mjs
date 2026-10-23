@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
 import {isolatedApp} from './helpers/isolated-app.mjs';
 import {connectedFixture} from './helpers/connected-fixture.mjs';
 
@@ -8,9 +9,10 @@ test('discovery migration upgrades taxonomy without changing category IDs or act
  const env=await isolatedApp(t),{db}=env;await env.applyMigrations(db,{through:'021_mobile_pin.sql'});
  const before=(await db.query('SELECT id,slug,revision FROM catalogue_categories ORDER BY id')).rows;
  await db.query("UPDATE catalogue_categories SET active=false WHERE slug='inverters'");
- await env.applyMigrations(db);const sql=await readFile(new URL('../server/db/migrations/022_marketplace_discovery.sql',import.meta.url),'utf8');
+ await env.applyMigrations(db);const allIds=(await db.query('SELECT id,slug FROM catalogue_categories ORDER BY slug')).rows;const sql=await readFile(new URL('../server/db/migrations/022_marketplace_discovery.sql',import.meta.url),'utf8');
  await db.query(sql);await env.applyMigrations(db);
  const categories=(await db.query('SELECT * FROM catalogue_categories')).rows;
+ assert.deepEqual((await db.query('SELECT id,slug FROM catalogue_categories ORDER BY slug')).rows,allIds);
  assert.equal(categories.filter(c=>c.discovery_key).length,8);assert.equal(new Set(categories.map(c=>c.slug)).size,categories.length);
  for(const old of before){const actual=categories.find(c=>c.id===old.id);assert.equal(actual.slug,old.slug);assert.equal(actual.revision,old.revision);}
  assert.equal(categories.find(c=>c.slug==='inverters').active,false);
@@ -19,7 +21,20 @@ test('discovery migration upgrades taxonomy without changing category IDs or act
 });
 
 test('marketplace discovery uses eligible offers, real prices and customer-owned location',{skip:!process.env.TEST_DATABASE_URL,timeout:120000},async t=>{
- const {db,a,b,customer,stranger,companyA,companyB,product}=await connectedFixture(t);
+ const {db,a,b,customer,stranger,companyA,companyB,product,base}=await connectedFixture(t);
+ await t.test('all eight category selections return only products in the selected category',async()=>{
+  const categories=(await customer.request('/public/categories')).data.categories.filter(c=>c.discovery_key),ids=[];
+  for(const category of categories){const id=randomUUID();ids.push(id);await db.query("INSERT INTO catalogue_products(id,category_id,name,brand,model,unit,schema_revision,created_by,published_by,published_at,status,public_visible) VALUES($1,$2,$3,'[TEST] ReviewBrand',$4,'unit',1,$5,$5,now(),'published',true)",[id,category.id,'[TEST] Review '+category.discovery_key,'ReviewModel-'+category.discovery_key,a.user.id]);}
+  for(const [index,category] of categories.entries()){const r=await customer.request('/public/products?category='+category.id);assert.equal(r.status,200);assert.ok(r.data.items.some(p=>p.id===ids[index]));assert.ok(r.data.items.every(p=>p.category_id===category.id));}
+  assert.equal((await customer.request('/public/products?search=ReviewBrand')).data.total,8);
+  assert.equal((await customer.request('/public/products?search=ReviewModel-panels')).data.total,1);
+  await db.query('DELETE FROM catalogue_products WHERE id=ANY($1::uuid[])',[ids]);
+ });
+ await t.test('product enquiry context and public assets use existing supported workflows',async()=>{
+  const options=await customer.request('/customer/enquiry-options?productId='+product);assert.equal(options.status,200);assert.equal(options.data.product.id,product);
+  assert.equal((await stranger.request('/customer/experience/marketplace-context')).data.location,null);
+  for(const asset of ['/assets/dashboard-category-illustrations.webp','/assets/dashboard-solar-home.webp','/assets/dashboard-support-agent.webp','/assets/solar-lighting-pumps.svg']){const r=await fetch(base+asset);assert.equal(r.status,200);}
+ });
  await t.test('eight active managed categories and no private fields',async()=>{
   const r=await customer.request('/public/products');assert.equal(r.status,200);assert.equal(r.data.categories.filter(c=>c.discovery_key).length,8);
   const p=r.data.items.find(p=>p.id===product);assert.equal(p.offer_count,2);assert.equal(p.offer_previews.length,2);assert.equal(p.offer_previews[0].price_paise,null);

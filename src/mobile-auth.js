@@ -4,9 +4,51 @@ window.MobileAuth=(()=>{
  const e=value=>escapeHTML(value??'');
  const emailMode=()=>mode==='email'||(mode===null&&!Account.session.pinAvailable);
  const switchButton=()=>`<button type="button" class="text-link auth-mode-switch" data-auth-mode="${emailMode()?'mobile':'email'}">${emailMode()?'Use mobile number and PIN':'Use existing email and password'}</button>`;
- const mobileField=()=>Account.field('Mobile number','mobile','tel','','required autocomplete="username" inputmode="tel" maxlength="24" placeholder="10-digit Indian mobile number"');
- const pinField=(name='pin',label='Six-digit PIN',fresh=false)=>Account.field(label,name,'password','',`required inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="${fresh?'new-password':'current-password'}"`);
+ const mobileField=()=>`<label class="auth-number-label">Mobile number<span class="auth-phone-control"><span class="auth-country" aria-hidden="true">+91</span><input name="mobile" type="tel" required autocomplete="username" inputmode="tel" maxlength="24" placeholder="Mobile number" aria-describedby="auth-mobile-hint"></span><small id="auth-mobile-hint" class="auth-number-hint">Your 10-digit Indian mobile number</small></label>`;
+ const pinField=(name='pin',label='Six-digit PIN',fresh=false)=>`<label class="auth-number-label">${e(label)}<span class="auth-pin-control"><span class="auth-pin-cells" aria-hidden="true">${'<span></span>'.repeat(6)}</span><input name="${e(name)}" type="password" required inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="${fresh?'new-password':'current-password'}" aria-describedby="auth-pin-hint"></span><small id="auth-pin-hint" class="auth-number-hint">Enter all six digits. Keep your PIN private.</small></label>`;
  const otpField=()=>Account.field('Code from your email','otp','text','','required inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="one-time-code"');
+ let signinDialog=null,signinController=null,signinFocus=null;
+ function paintPIN(input){
+  const cells=input.closest('.auth-pin-control')?.querySelectorAll('.auth-pin-cells>span');
+  cells?.forEach((cell,index)=>{cell.classList.toggle('is-filled',index<input.value.length);cell.classList.toggle('is-current',index===Math.min(input.value.length,5));});
+ }
+ document.addEventListener('input',event=>{if(event.target.matches('.auth-pin-control input'))paintPIN(event.target);});
+ document.addEventListener('change',event=>{if(event.target.matches('.auth-pin-control input'))paintPIN(event.target);});
+ document.addEventListener('click',event=>{if(event.target.closest('[data-login-back]'))queueMicrotask(()=>document.querySelectorAll('.auth-pin-control input').forEach(paintPIN));});
+ function cleanupLogin(){
+  signinFocus=signinDialog?.contains(document.activeElement)?document.activeElement.name:null;
+  signinController?.abort();signinController=null;
+  if(signinDialog?.open)signinDialog.close();
+  signinDialog=null;document.body.classList.remove('auth-modal-open');
+ }
+ function mountLogin(){
+  const login=document.querySelector('.auth-login:has(#account-login)');
+  if(!login)return false;
+  signinController=new AbortController();const {signal}=signinController;
+  const dialog=document.createElement('dialog');signinDialog=dialog;
+  dialog.id='signin-dialog';dialog.className='auth-signin-dialog';dialog.setAttribute('aria-labelledby','signin-title');dialog.setAttribute('aria-describedby','signin-intro');
+  const background=document.createElement('div');background.className='auth-signin-background';background.innerHTML=Landing.page();
+  login.before(background,dialog);dialog.append(login);
+  login.insertAdjacentHTML('afterbegin',`<div class="auth-dialog-top"><span class="auth-dialog-brand">MY SOLAR SOLUTIONS</span><button type="button" class="ob-close" data-signin-close aria-label="Close sign in">${icon('close')}</button></div>`);
+  login.querySelector('h1').insertAdjacentHTML('afterend','<p id="signin-intro" class="auth-signin-intro">Welcome back. Your solar journey continues here.</p>');
+  function dismiss(){
+   if([...dialog.querySelectorAll('button[type=submit]')].some(button=>button.disabled))return;
+   Account.navigate('/');
+   requestAnimationFrame(()=>document.querySelector('.ph-login')?.focus());
+  }
+  dialog.addEventListener('cancel',event=>{event.preventDefault();dismiss();},{signal});
+  dialog.addEventListener('click',event=>{if(event.target.closest('[data-signin-close]'))dismiss();},{signal});
+  let outside=false;
+  const isOutside=event=>{const box=dialog.getBoundingClientRect();return event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom;};
+  dialog.addEventListener('pointerdown',event=>{outside=event.target===dialog&&isOutside(event);},{signal});
+  dialog.addEventListener('pointerup',event=>{if(outside&&event.target===dialog&&isOutside(event))dismiss();outside=false;},{signal});
+  document.body.classList.add('auth-modal-open','lp-active');document.getElementById('main')?.classList.add('lp-main');
+  dialog.showModal();
+  const focus=[...dialog.querySelectorAll('input')].find(input=>input.name===signinFocus)||dialog.querySelector('input');
+  focus?.focus({preventScroll:true});signinFocus=null;
+  dialog.querySelectorAll('.auth-pin-control input').forEach(paintPIN);
+  return true;
+ }
  function login(){return '<div class="auth-login"><section class="panel settings-panel" aria-labelledby="signin-title"><h1 id="signin-title">Sign in</h1>'+(!Account.session.pinAvailable?'<p class="info-callout">Mobile/PIN access is not configured yet. Existing accounts can use email and password.</p>':'')+Account.form('account-login',mobileField()+pinField(),'Sign in',Account.session.error||undefined)+'<div class="account-links">'+link(Journey.authPath('/recover'),'Forgot PIN?','text-link')+switchButton()+'</div></section></div>';}
  function signupFields(prefix){
   const input=(label,name,type,extra)=>`<label for="${prefix}-${name}">${label}<input id="${prefix}-${name}" name="${name}" type="${type}" required ${extra} aria-describedby="${prefix}-${name}-error"><small class="ob-field-error" id="${prefix}-${name}-error"></small></label>`;
@@ -42,5 +84,5 @@ window.MobileAuth=(()=>{
    }catch(error){const local=f.querySelector('[data-pin-feedback]');if(local)local.textContent=error.message;throw error;}
   },f);
  });
- return {useMobile(){mode='mobile';},emailMode,switchButton,login,signupFields,confirmFields,requestConfirmation,recovery,security};
+ return {useMobile(){mode='mobile';},cleanupLogin,mountLogin,emailMode,switchButton,login,signupFields,confirmFields,requestConfirmation,recovery,security};
 })();

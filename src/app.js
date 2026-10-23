@@ -132,6 +132,7 @@ function applyTheme() {
   document.documentElement.style.setProperty('--ink',safe(live?.secondary_color,'#292b29'));
 }
 function render(focus=false) {
+  if(window.MobileAuth)MobileAuth.cleanupLogin();
   PublicHeader.cleanup();
   Landing.cleanup();
   currentPath=(location.hash.slice(1)||'/').split('?')[0];if(window.Experience)Experience.prepareRoute(currentPath);const channel=Account.channel(currentPath,routes[currentPath]?.[0]||'public');applyTheme();document.documentElement.lang=locale;document.documentElement.dir=locale==='ur'?'rtl':'ltr';document.title=currentPath==='/'?'MY SOLAR · Powering every possibility, together':`${routes[currentPath]?.[1]||'Page not found'} · MY SOLAR`;
@@ -150,8 +151,9 @@ function render(focus=false) {
   if(window.SIA)SIA.decorate();
   if(window.Commercial)Commercial.decorate();
   PublicHeader.mount();
+  const signinOpen=window.MobileAuth&&MobileAuth.mountLogin();
   Landing.mount();
-  if(focus)document.getElementById('main').focus({preventScroll:true});
+  if(focus&&!signinOpen)document.getElementById('main').focus({preventScroll:true});
 }
 function announce(message) {document.getElementById('announcer').textContent=message;}
 document.addEventListener('click',event=>{if(event.target.closest('.skip-link')){event.preventDefault();document.getElementById('main').focus();return;} const target=event.target.closest('[data-action]'); if(!target)return;switch(target.dataset.action){case 'menu':mobileOpen=!mobileOpen;render();if(mobileOpen)document.querySelector('.sidebar.open a, .mobile-public a')?.focus();else document.querySelector('.mobile-toggle')?.focus();break;case 'notifications':announce('No live notifications are connected in this Phase 1 preview.');target.setAttribute('aria-label','No live notifications — Phase 1 preview');break;case 'reset-theme':if(theme.logo)URL.revokeObjectURL(theme.logo);theme={...themeDefaults};render();document.getElementById('theme-feedback').textContent='Default theme restored for this session.';break;case 'retry':document.getElementById('state-feedback').textContent='Retry preview complete. No network request was made.';break;case 'reconnect':document.getElementById('state-feedback').textContent='Reconnect preview complete. No connection was attempted.';break;} });

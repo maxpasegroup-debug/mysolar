@@ -5,3 +5,40 @@
 
 .auth-login{width:min(100%,460px);margin:clamp(28px,7vh,80px) auto;padding:0 12px}.auth-login>.settings-panel{padding:32px;border-radius:16px}.auth-login h1{font-size:28px;margin:0 0 26px}.auth-login .account-form>.btn{width:100%}.auth-login .account-links{justify-content:flex-start}.auth-login label[hidden]{display:none!important}.auth-login [data-login-verification]>.btn{margin-top:12px}@media(max-width:480px){.auth-login>.settings-panel{padding:25px 20px}.auth-login{margin:28px auto}}
 .auth-mode-switch,[data-pin-restart]{border:0;background:transparent;font:inherit;cursor:pointer;padding:10px 0;text-align:left;white-space:normal;min-height:44px}.pin-form{display:grid;gap:14px}.pin-form>.btn{min-height:48px}.pin-form p{margin:0}.auth-login input[name=pin],input[name=otp]{letter-spacing:.22em;font-variant-numeric:tabular-nums}.auth-login .account-links{align-items:center}.auth-login .account-links a{display:inline-flex;align-items:center;min-height:44px}.auth-mode-switch:focus-visible,[data-pin-restart]:focus-visible{outline:2px solid var(--brand);outline-offset:4px}
+
+/* Route-backed sign-in dialog: the existing account form remains authoritative. */
+.auth-modal-open{overflow:hidden}
+.auth-signin-dialog{width:min(490px,calc(100% - 32px));max-height:calc(100dvh - 32px);padding:0;border:1px solid #e5ddcf;border-top:4px solid #681c2c;border-radius:22px;background:linear-gradient(145deg,#fcf7eb,#fffefa 45%);color:#30282b;box-shadow:0 30px 100px #29101d55;overflow:auto;overscroll-behavior:contain}
+.auth-signin-dialog::backdrop{background:#221a20a8;backdrop-filter:blur(5px)}
+.auth-signin-dialog .auth-login{width:100%;padding:26px 32px 30px;margin:0}
+.auth-dialog-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:17px}
+.auth-dialog-brand{font-size:10px;font-weight:650;letter-spacing:1.7px;color:#896c35}
+.auth-signin-dialog .auth-login>.settings-panel{padding:0;border:0;background:none;box-shadow:none;border-radius:0}
+.auth-signin-dialog .auth-login h1{font-size:34px;letter-spacing:-1px;margin-bottom:8px;color:#49232e}
+.auth-signin-intro{font-size:13px;line-height:1.7;color:#766c64;margin:0 0 26px}
+.auth-signin-dialog .account-form{display:grid;gap:20px}
+.auth-signin-dialog .account-form>label{margin:0}
+.auth-signin-dialog .account-form>.btn{min-height:52px;border-radius:11px;box-shadow:0 6px 18px #681c2c18;margin-top:0}
+.auth-signin-dialog .account-feedback{margin:0;font-size:12px}
+.auth-signin-dialog .account-links{gap:4px 18px;margin-top:15px;font-size:12px}
+.auth-signin-dialog :is(button,a):focus-visible{outline:3px solid #b18b42;outline-offset:3px}
+.auth-number-label{display:block;font-size:12px;font-weight:550;color:#493e3e}
+.auth-number-hint{display:block;margin-top:8px;font-size:11px;font-weight:400;line-height:1.5;color:#81766c}
+.auth-phone-control{display:flex;align-items:center;min-height:60px;margin-top:9px;border:1px solid #ddd3c4;border-radius:12px;background:linear-gradient(#fff,#fdfbf7);box-shadow:0 2px 4px #59322004;overflow:hidden;transition:border-color .15s,box-shadow .15s}
+.auth-country{padding:0 15px;border-right:1px solid #e8dfd4;color:#681c2c;font-size:17px;font-weight:650;line-height:28px}
+.auth-phone-control input{flex:1;min-width:0;width:100%;border:0!important;background:transparent!important;box-shadow:none!important;outline:none!important;padding:14px!important;margin:0!important;border-radius:0!important;min-height:58px;font-size:21px!important;font-weight:550;letter-spacing:.06em;font-variant-numeric:tabular-nums}
+.auth-phone-control input::placeholder{font-size:15px;letter-spacing:0;font-weight:400;color:#92867b}
+.auth-phone-control:focus-within{border-color:#895464;box-shadow:0 0 0 3px #681c2c16}
+.auth-pin-control{display:block;position:relative;margin-top:9px;isolation:isolate}
+.auth-pin-cells{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px;pointer-events:none}
+.auth-pin-cells>span{display:grid;place-items:center;aspect-ratio:1;max-height:62px;border:1px solid #ddd3c4;border-radius:11px;background:linear-gradient(#fff,#fbf7f1);box-shadow:0 2px 4px #59322005}
+.auth-pin-cells>span.is-filled::after{content:'';width:11px;height:11px;border-radius:50%;background:#681c2c}
+.auth-pin-control input{position:absolute;inset:0;width:100%;height:100%;min-height:0!important;padding:0!important;margin:0!important;border:0!important;border-radius:11px;background:transparent!important;color:transparent!important;caret-color:transparent;box-shadow:none!important;outline:none!important;letter-spacing:0!important;cursor:text;-webkit-text-fill-color:transparent}
+.auth-pin-control:focus-within .auth-pin-cells>span{border-color:#b99a82}
+.auth-pin-control:focus-within .auth-pin-cells>.is-current{border-color:#681c2c;box-shadow:0 0 0 3px #681c2c16}
+.auth-pin-control:has(input:disabled),.auth-phone-control:has(input:disabled){opacity:.65}
+.auth-signin-dialog .auth-dialog-top .ob-close{cursor:pointer}
+@media(max-width:480px){.auth-signin-dialog{width:calc(100% - 24px);max-height:calc(100dvh - 24px);border-radius:17px}.auth-signin-dialog .auth-login{padding:20px 23px 24px}.auth-pin-cells{gap:7px}.auth-pin-cells>span{border-radius:9px}.auth-signin-dialog .auth-login h1{font-size:31px}.auth-country{padding-inline:12px}}
+@media(prefers-reduced-motion:no-preference){.auth-signin-dialog[open]{animation:auth-dialog-in .18s ease-out}@keyframes auth-dialog-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}}
+@media(prefers-reduced-motion:reduce){.auth-signin-dialog *{transition:none!important;animation:none!important}}
+@media(forced-colors:active){.auth-pin-cells>span.is-filled::after{background:CanvasText}.auth-pin-control:focus-within .auth-pin-cells>.is-current{outline:2px solid Highlight}}

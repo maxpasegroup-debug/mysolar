@@ -1,0 +1,28 @@
+{
+  "source": "Built-in image_gen tool",
+  "purpose": "Decorative category and solar-home artwork for the customer dashboard; not evidence of products, stock, suppliers, installations or a permanent SIA identity.",
+  "encoding": "Selected generated PNGs encoded locally as WebP for delivery; originals preserved in the generator output directory and ignored local verification directory.",
+  "assets": [
+    {
+      "file": "dashboard-category-illustrations.webp",
+      "width": 2172,
+      "height": 724,
+      "bytes": 84486,
+      "prompt": "Create ONE production website asset: a single horizontal sprite strip, precisely SIX equally sized square cells in one row, total aspect ratio 6:1. Each cell has a clean pure white background with generous empty margins. Photorealistic studio catalogue product illustration, crisp edges, soft restrained contact shadow, front three-quarter views. Left to right EXACTLY: (1) one dark blue photovoltaic solar panel with silver frame leaning slightly, (2) one light grey wall-mounted solar inverter with small dark display, (3) one grey solar storage battery with dark top, (4) one solar water heater with cylindrical silver tank and sloping dark blue collector, (5) one bare aluminium solar panel mounting support frame with sloping rails, (6) a coiled red and black electrical cable beside two small solar connectors. Keep each complete object isolated INSIDE its own equally sized square cell; no overlapping or crossing cells, all items centered with 15 percent whitespace margin. These are generic educational category illustrations, not specific brands or products. No text, no labels, no logos, no people, no watermarks, no borders, no decorative solar landscapes. Realistic hardware materials. All six cells must share identical white background and lighting. This is an asset sprite, not a webpage or UI mockup."
+    },
+    {
+      "file": "dashboard-solar-home.webp",
+      "width": 1800,
+      "height": 600,
+      "bytes": 197582,
+      "prompt": "Create a single premium photorealistic website hero background, very wide panoramic 3:1 landscape composition. A beautiful modest contemporary two-storey Indian home with a sharply pitched dark roof covered in blue photovoltaic solar panels, surrounded by coconut palms and lush tropical planting, warm sunrise light with soft mist and distant green hills. The COMPLETE house occupies the RIGHT HALF of the composition and is clearly visible with its solar roof. The LEFT HALF is calm pale warm ivory-gold sky and softly lit distant landscape with very low visual detail and no foreground objects, providing readable negative space for dark burgundy website text to be added later in HTML. Camera eye level, attractive clean architecture, Indian tropical setting, realistic solar panels, welcoming and trustworthy. Match a premium solar marketplace advertising photograph. No text, no letters, no signage, no logo, no people, no cars, no watermark. Keep the building clear of the frame edges. Decorative conceptual illustration, not a photograph of a real supplier or installed project. Asset only, not a website screenshot."
+    },
+    {
+      "file": "dashboard-support-agent.webp",
+      "width": 400,
+      "height": 600,
+      "bytes": 34714,
+      "prompt": "One decorative customer-support illustration for a solar marketplace website. Clean polished flat-vector-style raster illustration of a friendly adult Indian woman customer support agent, shown from waist up, long dark brown hair, professional burgundy collared polo shirt with NO logo, black over-ear headset with microphone. Warm natural brown skin, composed helpful expression, realistic adult proportions, gently smiling, turned slightly toward the viewer's left. Crisp dark outlines, restrained soft shading, tasteful professional website illustration, NOT chibi, NOT a child, NOT 3D, NOT photorealistic. Full head, hair, shoulders and torso must be visible, no cropping at top. Transparent background. No text, no badges, no symbols, no logo, no border, no watermark. This is a generic decorative support agent, not an AI avatar or permanent brand mascot."
+    }
+  ]
+}

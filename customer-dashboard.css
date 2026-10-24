@@ -8,4 +8,14 @@
 .cd-help-art img{display:block;width:108px;height:auto}.customer-desktop-shell[dir=rtl] .cd-hero{background-image:linear-gradient(270deg,#fff5e4f5 0%,#fff2dbed 35%,#fff1d61a 80%),url('/assets/dashboard-solar-home.webp')}
 @media(max-width:1099px){.customer-desktop-shell[dir=rtl] .cd-sidebar:not(.open){transform:translateX(100%)}}
 .cd-search-spacer{flex:1;min-width:0}
+/* One focus boundary per control, with solid menu surfaces above page content. */
+.cd-header .cd-search{background:#f7f7f8;transition:border-color .15s,box-shadow .15s}
+.cd-header .cd-search:focus-within{border-color:#8f4656;box-shadow:0 0 0 3px #681c2c16}
+.cd-header .cd-search input,.cd-header .cd-search input:focus,.cd-header .cd-search input:focus-visible{height:100%;min-height:0;padding:0;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;outline:none}
+.customer-desktop-shell .cd-language{background:#fff;transition:border-color .15s,box-shadow .15s}
+.customer-desktop-shell .cd-language:focus-within{border-color:#681c2c;box-shadow:0 0 0 3px #681c2c16}
+.customer-desktop-shell .cd-language select:focus-visible{outline:none}
+.customer-desktop-shell .cd-language select{padding-inline-start:0;padding-inline-end:20px}
+.customer-desktop-shell .cd-language option{background:#fff;color:#252938}
+.customer-desktop-shell .cd-profile>div{background:#fff;opacity:1;-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 14px 36px #24111924}
 @media(max-width:1099px){.cd-search-spacer{display:none}}

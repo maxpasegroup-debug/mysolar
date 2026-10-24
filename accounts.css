@@ -10,6 +10,7 @@
 .auth-modal-open{overflow:hidden}
 .auth-signin-dialog{width:min(490px,calc(100% - 32px));max-height:calc(100dvh - 32px);padding:0;border:1px solid #e5ddcf;border-top:4px solid #681c2c;border-radius:22px;background:linear-gradient(145deg,#fcf7eb,#fffefa 45%);color:#30282b;box-shadow:0 30px 100px #29101d55;overflow:auto;overscroll-behavior:contain}
 .auth-signin-dialog::backdrop{background:#221a20a8;backdrop-filter:blur(5px)}
+.auth-signin-dialog{background-color:#fffefa}
 .auth-signin-dialog .auth-login{width:100%;padding:26px 32px 30px;margin:0}
 .auth-dialog-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:17px}
 .auth-dialog-brand{font-size:10px;font-weight:650;letter-spacing:1.7px;color:#896c35}
@@ -28,12 +29,15 @@
 .auth-country{padding:0 15px;border-right:1px solid #e8dfd4;color:#681c2c;font-size:17px;font-weight:650;line-height:28px}
 .auth-phone-control input{flex:1;min-width:0;width:100%;border:0!important;background:transparent!important;box-shadow:none!important;outline:none!important;padding:14px!important;margin:0!important;border-radius:0!important;min-height:58px;font-size:21px!important;font-weight:550;letter-spacing:.06em;font-variant-numeric:tabular-nums}
 .auth-phone-control input::placeholder{font-size:15px;letter-spacing:0;font-weight:400;color:#92867b}
+.auth-phone-control input:-webkit-autofill{-webkit-box-shadow:0 0 0 1000px #fffefa inset!important;box-shadow:0 0 0 1000px #fffefa inset!important;-webkit-text-fill-color:#30282b}
 .auth-phone-control:focus-within{border-color:#895464;box-shadow:0 0 0 3px #681c2c16}
 .auth-pin-control{display:block;position:relative;margin-top:9px;isolation:isolate}
 .auth-pin-cells{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px;pointer-events:none}
 .auth-pin-cells>span{display:grid;place-items:center;aspect-ratio:1;max-height:62px;border:1px solid #ddd3c4;border-radius:11px;background:linear-gradient(#fff,#fbf7f1);box-shadow:0 2px 4px #59322005}
 .auth-pin-cells>span.is-filled::after{content:'';width:11px;height:11px;border-radius:50%;background:#681c2c}
 .auth-pin-control input{position:absolute;inset:0;width:100%;height:100%;min-height:0!important;padding:0!important;margin:0!important;border:0!important;border-radius:11px;background:transparent!important;color:transparent!important;caret-color:transparent;box-shadow:none!important;outline:none!important;letter-spacing:0!important;cursor:text;-webkit-text-fill-color:transparent}
+/* The real password input stays focusable; its autofill paint must not cover the six visual cells. */
+.auth-pin-control input{opacity:0}
 .auth-pin-control:focus-within .auth-pin-cells>span{border-color:#b99a82}
 .auth-pin-control:focus-within .auth-pin-cells>.is-current{border-color:#681c2c;box-shadow:0 0 0 3px #681c2c16}
 .auth-pin-control:has(input:disabled),.auth-phone-control:has(input:disabled){opacity:.65}

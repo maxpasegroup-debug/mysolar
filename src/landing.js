@@ -107,6 +107,7 @@ const Landing = (() => {
       const panel = document.getElementById(panelId);
       panel.innerHTML = content;
       panel.setAttribute('aria-labelledby', button.id);
+      watchText(panel);
       schedulePiece();
     };
     document.addEventListener('click', event => {
@@ -133,18 +134,32 @@ const Landing = (() => {
       tabs[next].focus();
       tabs[next].click();
     }, { signal });
-    const targets = [...page.querySelectorAll('[data-lp-reveal]')];
+    const textSelector = 'h1,h2,h3,h4,p,small,.lp-kicker,.lp-button,.lp-step-number,.lp-audience-top>span:first-child,.lp-audience-bottom>span,.lp-platform-copy>ul>li,.lp-footer a,.lp-footer span,.lp-category-tabs button,.lp-preview-tabs button,.lp-intro-strip span,.lp-intro-strip p,.lp-preview-row>span,.lp-preview-row>strong';
+    const watchText = root => {
+      if (!root || !observer) return;
+      const nodes = [...root.querySelectorAll(textSelector)];
+      nodes.forEach(el => {
+        if (el.dataset.lpText === '1' || !el.textContent.trim() || el.closest('[aria-hidden="true"]')) return;
+        if (nodes.some(other => other !== el && other.contains(el))) return;
+        el.dataset.lpText = '1';
+        observer.observe(el);
+      });
+    };
     if (!motion.matches && 'IntersectionObserver' in window) {
       observer = new IntersectionObserver(entries => entries.forEach(entry => {
-        if (!entry.isIntersecting) return;
+        if (!entry.isIntersecting || entry.target.dataset.lpSeen === 'true') return;
         entry.target.dataset.lpSeen = 'true';
-        if (typeof entry.target.animate !== 'function') { observer.unobserve(entry.target); return; }
-        const scale = entry.target.classList.contains('lp-browser') || entry.target.classList.contains('lp-sia-orbit');
-        const delay = Math.min([...entry.target.parentElement.children].indexOf(entry.target), 3) * 65;
-        entry.target.animate([{ opacity: .4, transform: scale ? 'translateY(16px) scale(.98)' : 'translateY(24px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 650, delay, easing: 'cubic-bezier(.2,.7,.2,1)' });
         observer.unobserve(entry.target);
-      }), { threshold: .1 });
-      targets.forEach(target => observer.observe(target));
+        if (typeof entry.target.animate !== 'function') return;
+        const siblings = [...entry.target.parentElement.children].filter(child => child.dataset.lpText === '1');
+        const delay = Math.min(Math.max(siblings.indexOf(entry.target), 0), 4) * 70;
+        entry.target.animate(
+          [{ opacity: 0, transform: 'translateY(22px)' }, { opacity: 1, transform: 'none' }],
+          { duration: 680, delay, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'backwards' }
+        );
+      }), { threshold: 0.35, rootMargin: '0px 0px -8% 0px' });
+      watchText(page);
+      watchText(document.querySelector('.lp-footer'));
     }
     const piece = page.querySelector('.lp-panel-piece');
     const island = page.querySelector('.lp-hero-island');

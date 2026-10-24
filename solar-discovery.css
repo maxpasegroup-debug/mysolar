@@ -16,7 +16,7 @@
 body{background:transparent}
 .lp-active,.customer-desktop-shell,.lp-discovery,.lp-values,.lp-footer{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none}
 .lp-hero.lp-hero-stage{background:radial-gradient(48% 36% at 78% 0%,rgba(255,255,255,.45),transparent 68%),radial-gradient(40% 28% at 12% 8%,rgba(255,255,255,.28),transparent 70%),linear-gradient(180deg,#2f94e0 0%,#57b4ef 34%,#9ed4f7 68%,#e7f6fd 100%)}
-.lp-intro-strip{background:#F4E9B5;color:#292b29;border-bottom-color:transparent}
+.lp-intro-strip{background:#FFD105;color:#292b29;border-bottom-color:transparent}
 .lp-intro-strip p,.lp-intro-strip strong{color:#f8f7eb}
 .lp-intro-strip .icon{color:#d8ab55}
 
@@ -182,11 +182,11 @@ input:disabled{background:rgba(255,255,255,.38)}
     border-color:rgba(255,255,255,.55);
   }
 }
-.lp-platform{background:#F4E9B5;color:#292b29}
-.lp-audience-customer{background:#FFFFFF;color:#292b29}
+.lp-platform{background:#FFD105;color:#292b29}
+.lp-audience-customer{background:#FFD105;color:#292b29}
 .lp-audience-installer{background:#173B57;color:#FFFFFF}
-.lp-audience-dealer{background:#B7D8C0;color:#292b29}
-.lp-audience-distributor{background:#F2B8A2;color:#292b29}
+.lp-audience-dealer{background:#FFD105;color:#292b29}
+.lp-audience-distributor{background:#173B57;color:#FFFFFF}
 .lp-audience-customer>img,.lp-audience-overlay,.lp-audience-dealer>.icon,.lp-audience-distributor>.icon,.lp-roof-lines{display:none}
 .lp-audience::after{content:'';position:absolute;right:0;top:0;z-index:0;width:46%;height:100%;opacity:.16;pointer-events:none;background:repeating-linear-gradient(90deg,transparent 0 49px,#d8ab55 50px 51px),repeating-linear-gradient(0deg,transparent 0 49px,#d8ab55 50px 51px);transform:skew(-25deg) translateX(50px)}
 .lp-audience{justify-content:flex-start}
@@ -201,15 +201,15 @@ input:disabled{background:rgba(255,255,255,.38)}
 .lp-category-art:before{background:rgba(255,255,255,.42);-webkit-backdrop-filter:blur(18px) saturate(1.45);backdrop-filter:blur(18px) saturate(1.45);border-color:rgba(255,255,255,.75);box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 18px 40px rgba(55,110,155,.14)}
 .lp-category-art>.lp-panel-slot,.lp-category-art>.lp-equipment,.lp-category-art>.lp-equipment-symbol,.lp-category-art>span{position:relative;z-index:1}
 
-.lp-page{--lp-forest:#F4E9B5;--lp-burgundy:#F4E9B5}
+.lp-page{--lp-forest:#FFD105;--lp-burgundy:#FFD105}
 .lp-page h2 em,
-.lp-hero.lp-hero-stage .lp-hero-sub em{color:#F4E9B5}
+.lp-hero.lp-hero-stage .lp-hero-sub em{color:#FFD105}
 .lp-category-tabs button[aria-selected=true],
 .lp-category-tabs button:hover,
 .lp-preview-tabs button[aria-selected=true],
 .lp-footer nav>a:hover{color:#292b29}
 .lp-category-tabs button[aria-selected=true],
-.lp-preview-tabs button[aria-selected=true]{border-bottom-color:#F4E9B5}
+.lp-preview-tabs button[aria-selected=true]{border-bottom-color:#FFD105}
 .lp-intro-strip p,
 .lp-intro-strip strong,
 .lp-intro-strip span,
@@ -230,8 +230,14 @@ input:disabled{background:rgba(255,255,255,.38)}
 .lp-audience-installer p,
 .lp-audience-installer .lp-audience-bottom>span,
 .lp-audience-installer .lp-audience-top>span,
-.lp-audience-installer .lp-circle-arrow{color:#FFFFFF}
-.lp-audience-installer .lp-circle-arrow{border-color:#FFFFFF}
+.lp-audience-installer .lp-circle-arrow,
+.lp-audience-distributor h3,
+.lp-audience-distributor p,
+.lp-audience-distributor .lp-audience-bottom>span,
+.lp-audience-distributor .lp-audience-top>span,
+.lp-audience-distributor .lp-circle-arrow{color:#FFFFFF}
+.lp-audience-installer .lp-circle-arrow,
+.lp-audience-distributor .lp-circle-arrow{border-color:#FFFFFF}
 .lp-platform,
 .lp-platform h2,
 .lp-platform h2 em,
@@ -243,7 +249,7 @@ input:disabled{background:rgba(255,255,255,.38)}
 .lp-platform-end>span,
 .lp-platform-end>p,
 .lp-platform-end>a{color:#292b29}
-.lp-finale{background:#F4E9B5;color:#292b29}
+.lp-finale{background:#FFD105;color:#292b29}
 .lp-finale .lp-kicker,
 .lp-finale h2,
 .lp-finale h2 em,
@@ -251,21 +257,41 @@ input:disabled{background:rgba(255,255,255,.38)}
 .lp-finale-lines,
 .lp-finale-lines:before,
 .lp-finale-lines:after{border-color:#292b2924}
-.lp-page .lp-button{background:#F4E9B5;color:#292b29;border-color:#F4E9B5}
-.lp-page .lp-button:hover{background:#e6d28f;color:#292b29;border-color:#e6d28f}
+.lp-page .lp-button{background:#FFD105;color:#292b29;border-color:#FFD105}
+.lp-page .lp-button:hover{background:#E6BC00;color:#292b29;border-color:#E6BC00}
 .lp-page .lp-button-outline,
 .lp-page .lp-button-outline:hover,
 .lp-page .lp-button-gold,
-.lp-page .lp-button-gold:hover{border-color:#F4E9B5}
+.lp-page .lp-button-gold:hover{border-color:#FFD105}
 .lp-page .lp-button-outline{background:transparent;color:#292b29}
-.lp-page .lp-button-outline:hover{background:rgba(244,233,181,.45)}
+.lp-page .lp-button-outline:hover{background:rgba(255,209,5,.45)}
 .lp-page .lp-button-gold{background:#d8ab55;color:#292b29}
-.lp-page .lp-button-gold:hover{background:#e6d28f}
+.lp-page .lp-button-gold:hover{background:#E6BC00}
 .lp-page .lp-button-glass,
 .lp-page .lp-button-glass:hover{background:transparent;color:#292b29;border-color:#292b29}
 .ph-start,
-.ph-compact-start{background:#F4E9B5;border-color:#F4E9B5;color:#292b29}
+.ph-compact-start{background:#FFD105;border-color:#FFD105;color:#292b29}
 .ph-start .icon,
 .ph-compact-start .icon{color:#292b29}
 .ph-start:hover,
-.ph-compact-start:hover{background:#e6d28f;color:#292b29}
+.ph-compact-start:hover{background:#E6BC00;color:#292b29}
+@media(min-width:1200px){
+.lp-page p,.lp-section-heading>p,.lp-category-copy>p:not(.lp-kicker),.lp-platform-copy>p:not(.lp-kicker),.lp-sia-copy>p:not(.lp-kicker),.lp-steps p,.lp-value-grid p,.lp-finale p:not(.lp-kicker),.lp-audience p,.lp-footer-brand>p{font-size:18px;font-weight:650}
+.lp-page h2{font-size:clamp(44px,4.6vw,72px);font-weight:700}
+.lp-page h2 em,.lp-hero.lp-hero-stage .lp-hero-sub em{font-weight:700}
+.lp-page h3,.lp-steps h3,.lp-value-grid h3,.lp-preview-heading h3{font-size:28px;font-weight:700}
+.lp-category-copy h3{font-size:44px;font-weight:700}
+.lp-page .lp-kicker,.lp-intro-strip span,.lp-audience-top>span:first-child{font-size:13px;font-weight:700;letter-spacing:1.4px}
+.lp-intro-strip p,.lp-intro-strip strong{font-size:20px;font-weight:700}
+.lp-page .lp-button,.lp-sia-copy .lp-button,.lp-sia-copy .lp-text-link,.ph-trigger,.ph-login,.ph-start{font-size:15px;font-weight:700}
+.lp-category-tabs button{font-size:16px;font-weight:700}
+.lp-hero.lp-hero-stage .lp-hero-sub{font-size:clamp(22px,2.2vw,36px);font-weight:700}
+.lp-audience-customer h3,.lp-audience-installer h3,.lp-audience-dealer h3,.lp-audience-distributor h3{font-size:clamp(52px,5.2vw,78px);font-weight:700}
+.lp-audience-bottom>span,.lp-platform-copy li{font-size:17px;font-weight:650}
+.lp-platform-copy>small,.lp-category-copy>small,.lp-sia-copy>.lp-sia-disclosure{font-size:14px;font-weight:650}
+.lp-finale h2{font-size:clamp(56px,6vw,92px);font-weight:700}
+.lp-footer nav>h2,.lp-footer nav>a,.lp-footer-brand>span,.lp-footer-bottom{font-size:14px;font-weight:650}
+.lp-footer nav>h2{font-weight:700}
+.lp-preview-tabs button,.lp-preview-heading>span,.lp-preview-labels{font-size:12px;font-weight:700}
+.lp-preview-heading p,.lp-preview-row,.lp-preview-row>strong,.lp-preview-note{font-size:14px;font-weight:650}
+}

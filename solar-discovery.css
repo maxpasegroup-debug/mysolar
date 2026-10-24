@@ -184,9 +184,9 @@ input:disabled{background:rgba(255,255,255,.38)}
 }
 .lp-platform{background:#FFD105;color:#292b29}
 .lp-audience-customer{background:#FFD105;color:#292b29}
-.lp-audience-installer{background:#173B57;color:#FFFFFF}
+.lp-audience-installer{background:#601c2b;color:#FFFFFF}
 .lp-audience-dealer{background:#FFD105;color:#292b29}
-.lp-audience-distributor{background:#173B57;color:#FFFFFF}
+.lp-audience-distributor{background:#601c2b;color:#FFFFFF}
 .lp-audience-customer>img,.lp-audience-overlay,.lp-audience-dealer>.icon,.lp-audience-distributor>.icon,.lp-roof-lines{display:none}
 .lp-audience::after{content:'';position:absolute;right:0;top:0;z-index:0;width:46%;height:100%;opacity:.16;pointer-events:none;background:repeating-linear-gradient(90deg,transparent 0 49px,#d8ab55 50px 51px),repeating-linear-gradient(0deg,transparent 0 49px,#d8ab55 50px 51px);transform:skew(-25deg) translateX(50px)}
 .lp-audience{justify-content:flex-start}

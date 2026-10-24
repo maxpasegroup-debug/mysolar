@@ -3,6 +3,7 @@ const Landing = (() => {
   let controller;
   let observer;
   let frame = 0;
+  let flyingPiece = null;
   const arrow = () => icon('arrow');
   const cta = (path, label, kind = '') => link(path, `${label}${arrow()}`, `lp-button ${kind}`);
   const sectionLink = (id, label) => `<a href="#/?section=${id}" data-lp-scroll="${id}">${label}</a>`;
@@ -27,7 +28,7 @@ const Landing = (() => {
   }
 
   function equipment(key) {
-    if (key === 'panels') return `<div class="lp-panel-slot"><svg class="lp-equipment" viewBox="0 0 460 340" fill="none" aria-hidden="true"><defs><linearGradient id="lp-panel" x2="1" y2="1"><stop stop-color="#304c53"/><stop offset="1" stop-color="#142b37"/></linearGradient><pattern id="lp-cells" width="42" height="54" patternUnits="userSpaceOnUse"><path d="M0 0H42V54H0Z" stroke="#a4bec1" stroke-width=".8"/><path d="M14 0V54M28 0V54" stroke="#a4bec1" stroke-opacity=".24"/></pattern></defs><ellipse cx="237" cy="287" rx="158" ry="18" fill="#14382b" opacity=".08"/><g transform="translate(67 38) rotate(-9 165 125)"><path d="M28 244V272M302 244V272" stroke="#8b9c96" stroke-width="9"/><rect width="330" height="245" rx="4" fill="url(#lp-panel)" stroke="#b0bbb7" stroke-width="8"/><rect x="5" y="5" width="320" height="235" fill="url(#lp-cells)"/><path d="M165 3V242" stroke="#bac9c7" stroke-width="4"/><path d="M5 5H320L5 200Z" fill="white" opacity=".07"/></g></svg></div>`;
+    if (key === 'panels') return `<div class="lp-panel-slot"></div>`;
     return `<div class="lp-equipment-symbol lp-equipment-${key}">${icon(categories.find(c => c.key === key).symbol)}<span></span><i></i></div>`;
   }
 
@@ -42,15 +43,18 @@ const Landing = (() => {
 
   function page() {
     return `<div class="lp-page" id="lp-top">
+      <div class="lp-behind-sky" aria-hidden="true">${[[-8,6,13,'b',.32],[58,2,15,'a',.28],[12,24,10,'c',.22],[76,30,12,'b',.26],[-6,52,14,'a',.24],[42,58,10,'c',.2],[68,74,13,'b',.24],[4,78,11,'a',.2]].map(([left, top, width, kind, fade]) => `<img class="lp-behind-cloud" src="/assets/hero-cloud-${kind}.png" alt="" style="left:${left}%;top:${top}%;--lp-cloud-w:${width}%;--lp-cloud-fade:${fade}">`).join('')}</div>
       <section class="lp-hero lp-hero-stage" aria-labelledby="lp-hero-title">
         <div class="lp-hero-pin">
-          <div class="lp-cloud-veil" aria-hidden="true">${[[-62,-48,-1],[-18,-52,1],[22,-44,-1],[58,-50,1],[-58,-16,1],[-14,-18,-1],[26,-12,1],[62,-20,-1],[-60,12,-1],[-16,10,1],[24,14,-1],[60,8,1],[-54,38,1],[-12,36,-1],[28,40,1],[64,34,-1],[-417,-44,-1]].map(([left, top, dir], index) => `<img class="lp-cloud" src="/assets/hero-cloud-${['a','b','c'][index % 3]}.png" alt="" style="left:${left}%;top:${top}%" data-dir="${dir}" data-flip="${index % 2 ? -1 : 1}">`).join('')}</div>
+          <div class="lp-sky-still" aria-hidden="true">${[[-8,46,18,'b',.78],[84,44,16,'c',.72],[2,64,15,'a',.66],[78,68,16,'b',.62],[-4,78,14,'c',.55],[70,82,14,'a',.5]].map(([left, top, width, kind, fade]) => `<img class="lp-sky-cloud" src="/assets/hero-cloud-${kind}.png" alt="" style="left:${left}%;top:${top}%;--lp-cloud-w:${width}%;--lp-cloud-fade:${fade}">`).join('')}</div>
           <div class="lp-hero-copy">
             <h1 id="lp-hero-title" class="lp-hero-mark">MY SOLAR</h1>
             <p class="lp-hero-sub">Powering every possibility. <em>Together.</em></p>
           </div>
+          <div class="lp-cloud-bed" aria-hidden="true">${[[-18,0,80],[16,-4,88],[46,2,76],[-12,18,60],[30,20,72],[58,14,58]].map(([left, bottom, width]) => `<img class="lp-bed-cloud" src="/assets/hero-cloud-b.png" alt="" style="left:${left}%;bottom:${bottom}%;--lp-cloud-w:${width}%">`).join('')}</div>
           <img class="lp-hero-island" src="/assets/hero-island.png" width="1024" height="682" alt="" fetchpriority="high" decoding="async">
           <img class="lp-panel-piece" src="/assets/hero-panel-piece.png" width="700" height="336" alt="">
+          <div class="lp-cloud-veil" aria-hidden="true">${[[-62,-48,-1],[-18,-52,1],[22,-44,-1],[58,-50,1],[-58,-16,1],[-14,-18,-1],[26,-12,1],[62,-20,-1],[-60,12,-1],[-16,10,1],[24,14,-1],[60,8,1],[-54,38,1],[-12,36,-1],[28,40,1],[64,34,-1],[-417,-44,-1]].map(([left, top, dir], index) => `<img class="lp-cloud" src="/assets/hero-cloud-${['a','b','c'][index % 3]}.png" alt="" style="left:${left}%;top:${top}%" data-dir="${dir}" data-flip="${index % 2 ? -1 : 1}">`).join('')}</div>
         </div>
       </section>
       <section class="lp-discovery lp-section" id="lp-discovery" aria-labelledby="lp-discovery-title"><div class="lp-wrap"><div class="lp-section-heading" data-lp-reveal><div><p class="lp-kicker">THE BUILDING BLOCKS OF BETTER ENERGY</p><h2 id="lp-discovery-title">A world of solar.<br><em>A clearer starting point.</em></h2></div>${link('/products', 'Browse the catalogue ' + arrow(), 'lp-text-link')}</div><div class="lp-category-tabs" role="tablist" aria-label="Explore energy categories">${categories.map((c, i) => `<button type="button" id="lp-category-${c.key}" role="tab" aria-selected="${i === 0}" aria-controls="lp-category-panel" tabindex="${i === 0 ? '0' : '-1'}" data-lp-category="${c.key}">${c.name}</button>`).join('')}</div><div id="lp-category-panel" class="lp-category-panel" role="tabpanel" aria-labelledby="lp-category-panels" tabindex="0">${categoryContent(categories[0])}</div></div></section>
@@ -70,6 +74,8 @@ const Landing = (() => {
   }
 
   function cleanup() {
+    if (flyingPiece?.parentElement === document.body) flyingPiece.remove();
+    flyingPiece = null;
     controller?.abort();
     observer?.disconnect();
     cancelAnimationFrame(frame);
@@ -230,14 +236,18 @@ const Landing = (() => {
       piece.style.transform = `rotate(${box.r}deg)`;
       const flying = cloudsGone && progress > 0;
       if (flying) {
+        if (piece.parentElement !== document.body) document.body.appendChild(piece);
+        flyingPiece = piece;
         piece.style.position = 'fixed';
         piece.style.zIndex = '40';
         piece.style.left = `${box.x}px`;
         piece.style.top = `${box.y}px`;
       } else {
+        if (pin && piece.parentElement !== pin) pin.appendChild(piece);
+        flyingPiece = null;
         const pinRect = pin.getBoundingClientRect();
         piece.style.position = 'absolute';
-        piece.style.zIndex = '4';
+        piece.style.zIndex = '5';
         piece.style.left = `${box.x - pinRect.left}px`;
         piece.style.top = `${box.y - pinRect.top}px`;
       }

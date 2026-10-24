@@ -4,3 +4,195 @@
 @media(prefers-reduced-motion:reduce){.ds-panel *{animation:none!important;transition:none!important}.ds-panel .ds-sequence[aria-hidden]{display:none}.ds-panel [data-ds-pause]{display:none}}
 
 .ds-about{margin-top:15px;padding-left:11px;border-left:2px solid #c9a85c}.ds-about h3{font-size:12px;color:#593a3f;margin:0 0 5px;letter-spacing:0}.ds-about p{font-size:12px;line-height:1.7;color:#645d51;margin:0}.ds-category-description{display:block;padding:0 10px 11px;font-size:12px;line-height:1.5;color:#645d51}.ds-intro .ds-eyebrow{font-size:10px}.ds-image-explanation{font-size:10px!important}.ds-image-note{font-size:9px}.ds-brand-note{font-size:10px!important}.ds-status{font-size:11px!important}@media(max-width:999px){.ds-category-description{padding:0 8px 10px;font-size:12px}.ds-image-note{font-size:8px}.ds-about{margin-top:12px}.ds-intro .ds-eyebrow{font-size:10px}.ds-benefits>li{font-size:12px}}
+
+/* The hero sky, fixed, so every blue section is the same sky. Brand blocks stay solid. */
+:root{
+  background:
+    radial-gradient(42% 32% at 12% 0%,rgba(255,255,255,.7),transparent 70%),
+    radial-gradient(70% 42% at 70% 108%,rgba(255,232,190,.55),transparent 58%),
+    linear-gradient(180deg,#69b4e6 0%,#8ec8ef 32%,#c5e4f6 68%,#f4f8fb 100%);
+  background-attachment:fixed;
+}
+body{background:transparent}
+.lp-active,.customer-desktop-shell,.lp-discovery,.lp-values,.lp-footer{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none}
+.lp-hero.lp-hero-stage{background:radial-gradient(48% 36% at 78% 0%,rgba(255,255,255,.45),transparent 68%),radial-gradient(40% 28% at 12% 8%,rgba(255,255,255,.28),transparent 70%),linear-gradient(180deg,#2f94e0 0%,#57b4ef 34%,#9ed4f7 68%,#e7f6fd 100%)}
+.lp-intro-strip{background:#601c2b;color:#f8f7eb;border-bottom-color:transparent}
+.lp-intro-strip p,.lp-intro-strip strong{color:#f8f7eb}
+.lp-intro-strip .icon{color:#d8ab55}
+
+.lp-header,
+.ph-header,
+.ph-header.ph-scrolled,
+.public-header,
+.workspace-header,
+.cd-header,
+.cd-footer{
+  background:rgba(255,255,255,.46);
+  -webkit-backdrop-filter:blur(22px) saturate(1.45);
+  backdrop-filter:blur(22px) saturate(1.45);
+  border-color:rgba(255,255,255,.5);
+}
+.lp-header,.ph-header{border-bottom-color:rgba(255,255,255,.55)}
+
+.lp-audience-dealer,
+.lp-audience-distributor,
+.lp-browser,
+.lp-menu>nav,
+.ph-panel,
+.ph-header .ds-panel,
+.ph-journey,
+.panel,
+.stat-card,
+.category-card,
+.sidebar,
+.customer-desktop-shell .cd-sidebar,
+.market-filters,
+.catalogue-card,
+.demo-notice,
+.storefront-hero,
+.summary-note,
+.installation-note,
+.translation-note,
+.sia-presence,
+.visual-label,
+.auth-signin-dialog,
+.ob-dialog,
+.ob-top,
+.company-storefront,
+.company-storefront.clean,
+.sm-category,
+.sm-location,
+.sm-filters,
+.sm-product,
+.sm-help,
+.sm-help>div+div,
+.sm-guide,
+.sm-empty,
+.cd-profile>div,
+.cd-product,
+.cd-catalogue-empty,
+.cd-how,
+.cd-rail-card,
+.cd-chat,
+.cd-search,
+.customer-home-next,
+.growth-offer,
+.brand-live-preview,
+.brand-live-preview.clean,
+.private-site-preview,
+.manual-invite,
+.purchase-recipient,
+.purchase-form[data-layout=filters],
+.purchase-catalogue-picker,
+.commercial-notice,
+.experience-logo{
+  background:rgba(255,255,255,.68);
+  -webkit-backdrop-filter:blur(18px) saturate(1.4);
+  backdrop-filter:blur(18px) saturate(1.4);
+  border-color:rgba(255,255,255,.62);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.45),0 16px 40px rgba(40,80,120,.08);
+}
+
+.lp-browser-bar,
+.lp-preview-row,
+.lp-preview-labels,
+.lp-orbit-label,
+.lp-step-number,
+.lp-sia-core,
+.ms-logo,
+.ds-category,
+.lp-sia-core .sia-avatar,
+.sidebar-sia,
+.ph-choice,
+.ph-item-icon,
+.ph-item-emphasis,
+.ph-close,
+.ph-menu-toggle,
+th,
+.progress-steps li>span,
+.storefront-logo,
+.org-subnav a,
+.org-logo,
+.setup-progress li,
+.setup-progress span,
+.cd-facility.cream,
+.cd-facility.blush,
+.product-picture,
+.product-picture>img,
+.sm-product-image,
+.sm-product-image img,
+.sm-category-art{
+  background:rgba(255,255,255,.5);
+  -webkit-backdrop-filter:blur(14px) saturate(1.3);
+  backdrop-filter:blur(14px) saturate(1.3);
+}
+
+.lp-menu nav>a:hover,
+.lp-category-tabs button:hover,
+.lp-button-outline:hover,
+.nav-item:hover,
+.ph-trigger:hover,
+.ph-trigger[aria-expanded=true],
+.ph-item:hover,
+.ph-item:focus-visible,
+.ph-choice:hover,
+.ph-operator-link:hover,
+.ph-item-emphasis:hover,
+.ob-close:hover{
+  background:rgba(255,255,255,.58);
+}
+.nav-item.active{background:color-mix(in srgb,var(--brand) 12%,rgba(255,255,255,.5))}
+
+.btn.light,
+.store-experience .btn.secondary,
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=submit]):not([type=button]):not([type=image]),
+select,
+textarea,
+.auth-phone-control,
+.auth-pin-cells>span,
+.ph-language select,
+.ob-dialog input,
+.sm-search input,
+.sm-filters :is(input:not([type=checkbox]),select),
+.experience-filter input,
+.experience-filter select,
+.commercial-form input:not([type=checkbox]),
+.commercial-form select,
+.commercial-search input,
+.growth-form input,
+.growth-form select,
+.growth-form textarea,
+.purchase-form input,
+.purchase-form select,
+.purchase-form textarea,
+.ops-form input,
+.ops-form select,
+.ops-form textarea{
+  background:rgba(255,255,255,.62);
+  -webkit-backdrop-filter:blur(12px) saturate(1.2);
+  backdrop-filter:blur(12px) saturate(1.2);
+}
+.sia-compose input{background:rgba(255,255,255,.62)!important}
+input:disabled{background:rgba(255,255,255,.38)}
+@media(max-width:999px){
+  .ph-navigation{
+    background:rgba(255,255,255,.88);
+    -webkit-backdrop-filter:blur(22px) saturate(1.45);
+    backdrop-filter:blur(22px) saturate(1.45);
+    border-color:rgba(255,255,255,.55);
+  }
+}
+.lp-audience-customer,.lp-audience-installer,.lp-audience-dealer,.lp-audience-distributor,.lp-platform{background:#601c2b;color:#fff4df}
+.lp-audience-customer>img,.lp-audience-overlay,.lp-audience-dealer>.icon,.lp-audience-distributor>.icon,.lp-roof-lines{display:none}
+.lp-audience::after{content:'';position:absolute;right:0;top:0;z-index:0;width:46%;height:100%;opacity:.16;pointer-events:none;background:repeating-linear-gradient(90deg,transparent 0 49px,#d8ab55 50px 51px),repeating-linear-gradient(0deg,transparent 0 49px,#d8ab55 50px 51px);transform:skew(-25deg) translateX(50px)}
+.lp-audience{justify-content:flex-start}
+.lp-audience-customer .lp-audience-bottom,.lp-audience-installer .lp-audience-bottom,.lp-audience-dealer .lp-audience-bottom,.lp-audience-distributor .lp-audience-bottom{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;flex:1;width:min(100%,640px);margin:0;padding:24px 0;position:relative;z-index:1}
+.lp-audience-customer h3,.lp-audience-installer h3,.lp-audience-dealer h3,.lp-audience-distributor h3{margin:0 0 18px;font-size:clamp(44px,4.8vw,68px);font-weight:500;line-height:1.02;letter-spacing:-1.6px;color:#fff4df}
+.lp-audience-customer p,.lp-audience-installer p,.lp-audience-dealer p,.lp-audience-distributor p,.lp-audience-bottom>span{color:#fff4df;opacity:1}
+.lp-audience p{max-width:42ch;margin:0 0 16px;font-size:16px;line-height:1.55}
+.lp-audience-dealer .lp-circle-arrow,.lp-audience-distributor .lp-circle-arrow{border-color:#ffffff50}
+@media(max-width:720px){
+  .lp-audience-customer h3,.lp-audience-installer h3,.lp-audience-dealer h3,.lp-audience-distributor h3{font-size:40px}
+}
+.lp-category-art:before{background:rgba(255,255,255,.42);-webkit-backdrop-filter:blur(18px) saturate(1.45);backdrop-filter:blur(18px) saturate(1.45);border-color:rgba(255,255,255,.75);box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 18px 40px rgba(55,110,155,.14)}
+.lp-category-art>.lp-panel-slot,.lp-category-art>.lp-equipment,.lp-category-art>.lp-equipment-symbol,.lp-category-art>span{position:relative;z-index:1}

@@ -1,3 +1,4 @@
+import {prepareInstallation} from './installation-fixture.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 
@@ -41,7 +42,7 @@ export async function connectedJourney(t,{db,a,b,customer,stranger,companyA,prod
  await t.test('connected journey: installation milestones and a service report stay linked to the confirmed order',async()=>{
   project=success(await a.request('/companies/current/operations/projects','POST',{operationKey:randomUUID(),contactId:contact,orderId:order,leadId:null,reference:'TEST-CONNECTED-PROJECT',name:'[TEST] Connected installation',location:'[TEST] site',scope:'',equipment:'',capacity:'',managerId:a.user.id,scheduledDate:null,reason:'[TEST] confirmed scope'}),201).id;
   success(await a.request('/companies/current/operations/projects/'+project+'/actions','POST',{revision:1,action:'active',reference:'',notes:'[TEST] start recorded work'}));
-  let revision=2;for(const code of ['survey','design','materials','schedule','installation','inspection','commissioning','handover'])success(await a.request('/companies/current/operations/projects/'+project+'/milestones','POST',{revision:revision++,code,status:'done',notes:'[TEST] recorded '+code,evidenceReference:'TEST-'+code}));
+  await prepareInstallation(a,project);let revision=(await a.request('/companies/current/operations/record/projects/'+project)).data.record.revision;for(const code of ['survey','design','materials','schedule','installation','inspection','commissioning','handover'])success(await a.request('/companies/current/operations/projects/'+project+'/milestones','POST',{revision:revision++,code,status:'done',notes:'[TEST] recorded '+code,evidenceReference:'TEST-'+code}));
   success(await a.request('/companies/current/operations/projects/'+project+'/actions','POST',{revision,action:'completed',reference:'TEST-HANDOVER',notes:'[TEST] actual fixture completion'}));
   const tracked=success(await customer.request('/customer/operations/record/projects/'+project));assert.equal(tracked.links.order,order);assert.equal(tracked.links.enquiry,enquiryId);assert.equal(tracked.milestones.filter(m=>m.status==='done').length,8);
   const issue={operationKey:randomUUID(),issue:'[TEST] Please inspect the system after handover',priority:'normal'};
@@ -71,7 +72,8 @@ export async function connectedJourney(t,{db,a,b,customer,stranger,companyA,prod
  });
  await t.test('connected journey: service resolution is shared explicitly while document references and staff notes stay private',async()=>{
   success(await a.request('/companies/current/operations/record/orders/'+order+'/documents','POST',{operationKey:randomUUID(),title:'[TEST] Private installation document',reference:'https://private.invalid/PRIVATE-DOCUMENT',documentDate:null,notes:'PRIVATE-DOCUMENT-NOTES'}),201);
-  let revision=1;for(const status of ['triaged','assigned','in_progress','resolved','closed'])success(await a.request('/companies/current/operations/service/'+service+'/update','POST',{revision:revision++,status,assigneeId:a.user.id,followUp:null,resolution:['resolved','closed'].includes(status)?'[TEST] repaired and explained to customer':'',internalNotes:'PRIVATE-SERVICE-NOTE',customerUpdate:'[TEST] Your service is '+status}));
+  let revision=1;for(const status of ['triaged','assigned','in_progress','resolved'])success(await a.request('/companies/current/operations/service/'+service+'/update','POST',{revision:revision++,status,assigneeId:a.user.id,followUp:null,resolution:['resolved','closed'].includes(status)?'[TEST] repaired and explained to customer':'',resolutionReference:'TEST-SERVICE-EVIDENCE',internalNotes:'PRIVATE-SERVICE-NOTE',customerUpdate:'[TEST] Your service is '+status}));
+  const pending=success(await customer.request('/customer/operations/record/service/'+service));success(await customer.request('/customer/operations/service/'+service+'/respond','POST',{operationKey:randomUUID(),revision:pending.record.revision,resolutionId:pending.retention.resolutions[0].id,accepted:true,rating:'5',comment:'[TEST] Your service is closed'}));
   const record=success(await customer.request('/customer/operations/record/service/'+service));assert.equal(record.record.status,'closed');assert.ok(record.history.items.some(event=>event.notes==='[TEST] Your service is closed'));assert.doesNotMatch(JSON.stringify(record),/PRIVATE-SERVICE-NOTE/);
   const exported=success(await customer.request('/customer/experience/exports/orders/'+order));assert.doesNotMatch(JSON.stringify(exported),/PRIVATE-DOCUMENT|private.invalid/);
   const tracked=success(await customer.request('/customer/experience/journeys/'+enquiryId));assert.equal(tracked.service.find(row=>row.id===service).status,'closed');

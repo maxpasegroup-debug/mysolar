@@ -136,7 +136,8 @@ test('isolated PostgreSQL: PRO partners, staff assignments and downgrade boundar
   const record=await executive.request('/companies/current/operations/record/tasks/'+task);assert.equal(record.status,200);assert.equal(record.data.growth.enabled,false);assert.equal(record.data.record.status,'in_progress');assert.equal((await a.request('/companies/current/partners')).status,200);
   assert.ok(!(await a.request('/companies/current/operations/options?type=employees')).data.items.some(x=>x.id===executive.user.id));
   assert.equal((await edit(a,ab.id,{status:'revoked',notes:'attempt to edit during downgrade'})).data.error.code,'PRO_REQUIRED');assert.equal((await relation(ab.id)).status,'active');assert.equal((await edit(a,ab.id,{status:'revoked'})).status,200);
-  assert.equal((await a.request('/companies/current/members/'+member.id,'PATCH',{role:'part_time_sales',status:'suspended'})).status,200);
+  assert.equal((await a.request('/companies/current/members/'+member.id,'PATCH',{role:'part_time_sales',status:'suspended'})).status,409);
+  const endpoint='/companies/current/controls/people/'+member.id+'/departure',preview=await a.request(endpoint+'/preview','POST',{toUserId:a.user.id,status:'suspended'});assert.equal(preview.status,200,JSON.stringify(preview.data));assert.equal((await a.request(endpoint,'POST',{toUserId:a.user.id,status:'suspended',operationKey:randomUUID(),workVersion:preview.data.workVersion,confirm:true,reason:'[TEST] safe handoff on expiry'})).status,200);
   assert.equal((await a.request('/companies/current/members/'+member.id,'PATCH',{role:'part_time_sales',status:'active'})).data.error.code,'ENTITLEMENT_REQUIRED');assert.equal((await executive.request('/companies/current/operations/list/tasks')).status,403);
  });
  await t.test('renewal preserves prior agreements/audits and allows only explicitly restored membership',async()=>{

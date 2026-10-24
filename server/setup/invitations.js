@@ -1,3 +1,4 @@
+import {validateRoleProfile} from '../people-sales.js';
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
@@ -39,18 +40,18 @@ invitations.get('/companies/current/invitations',async(req,res)=>res.json(await 
   return {invitations:rows.rows,deliveryMode:config.invitationDelivery,available:true,emailAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey),assignableRoles:staffRoles};
 })));
 invitations.post('/companies/current/invitations',async(req,res)=>{
-  v.body(req.body,['email','role','delivery','staffDetails'],['email','role']);const email=v.email(req.body.email),role=v.choice(req.body.role,staffRoles,'company role'),details=staffDetails(req.body.staffDetails,role);
+  v.body(req.body,['email','role','delivery','staffDetails','profileId'],['email','role']);const email=v.email(req.body.email),role=v.choice(req.body.role,staffRoles,'company role'),details=staffDetails(req.body.staffDetails,role);
   const delivery=req.body.delivery===undefined&&config.invitationDelivery==='manual'?'manual':deliveryChoice(req.body.delivery);
   await limit(req,'invite-create',req.session.user_id,20,3600);
   const token=randomToken(),tokenHash=digest(token),id=randomUUID();
   const result=await withCompany(req,'invitations.manage',async(db,ctx)=>{
-    await requireStaffEntitlement(db,ctx.companyId,role);
+    const profile=await validateRoleProfile(db,ctx.companyId,role,req.body.profileId);await requireStaffEntitlement(db,ctx.companyId,role);
     const existing=await db.query('SELECT m.id FROM company_memberships m JOIN users u ON u.id=m.user_id WHERE m.company_id=$1 AND u.email=$2',[ctx.companyId,email]);
     if(existing.rowCount)throw new HttpError(409,'MEMBER_EXISTS','This account already has a membership. Manage that membership instead.');
     await db.query("UPDATE company_invitations SET status='revoked' WHERE company_id=$1 AND email=$2 AND status='pending' AND expires_at<=now()",[ctx.companyId,email]);
     await teamCapacity(db,ctx.companyId);
     await db.query("INSERT INTO company_invitations(id,company_id,email,role_id,token_hash,delivery,invited_by,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,now()+interval '48 hours')",[id,ctx.companyId,email,role,tokenHash,delivery,ctx.userId]);
-    await db.query('UPDATE company_invitations SET staff_details=$1 WHERE id=$2',[details,id]);
+    await db.query('UPDATE company_invitations SET staff_details=$1,role_profile_id=$2 WHERE id=$3',[details,profile,id]);
     const company=(await db.query('SELECT name FROM companies WHERE id=$1',[ctx.companyId])).rows[0];
     await audit(db,{actor:ctx.userId,company:ctx.companyId,action:'invitation.created',target:id,metadata:{role,delivery}});
     return {companyId:ctx.companyId,name:company.name};
@@ -83,13 +84,13 @@ invitations.post('/invitations/accept',async(req,res)=>{
     const denied=()=>new HttpError(400,'INVALID_INVITATION','This invitation is expired, unavailable, or belongs to another account.');
     if(!ref)throw denied();
     const company=await db.query("SELECT id FROM companies WHERE id=$1 AND status='active' FOR UPDATE",[ref.company_id]);if(!company.rowCount)throw denied();
-    const result=await db.query(`SELECT i.id,i.company_id,i.role_id FROM company_invitations i WHERE i.token_hash=$1 AND i.company_id=$2 AND i.email=$3 AND i.status='pending' AND i.expires_at>now()
+    const result=await db.query(`SELECT i.id,i.company_id,i.role_id,i.role_profile_id FROM company_invitations i WHERE i.token_hash=$1 AND i.company_id=$2 AND i.email=$3 AND i.status='pending' AND i.expires_at>now()
       AND EXISTS(SELECT 1 FROM company_memberships m JOIN users u ON u.id=m.user_id JOIN role_permissions p ON p.role_id=m.role_id WHERE m.company_id=i.company_id AND m.user_id=i.invited_by AND m.status='active' AND u.status='active' AND p.permission_id='invitations.manage') FOR UPDATE OF i`,[digest(token),ref.company_id,user.email]);
     if(!result.rowCount)throw denied();const invite=result.rows[0];v.choice(invite.role_id,staffRoles,'company role');
     await requireStaffEntitlement(db,invite.company_id,invite.role_id);
     const existing=await db.query('SELECT id FROM company_memberships WHERE company_id=$1 AND user_id=$2',[invite.company_id,user.id]);if(existing.rowCount)throw new HttpError(409,'MEMBER_EXISTS','A membership already exists. Ask the company owner to manage it.');
     await teamCapacity(db,invite.company_id,invite.id);
-    const id=randomUUID();await db.query('INSERT INTO company_memberships(id,company_id,user_id,role_id) VALUES($1,$2,$3,$4)',[id,invite.company_id,user.id,invite.role_id]);
+    const id=randomUUID(),profile=await validateRoleProfile(db,invite.company_id,invite.role_id,invite.role_profile_id);await db.query('INSERT INTO company_memberships(id,company_id,user_id,role_id,role_profile_id) VALUES($1,$2,$3,$4,$5)',[id,invite.company_id,user.id,invite.role_id,profile]);
     await db.query('UPDATE company_memberships SET staff_details=i.staff_details FROM company_invitations i WHERE company_memberships.id=$1 AND i.id=$2 AND i.company_id=company_memberships.company_id',[id,invite.id]);
     await db.query("UPDATE company_invitations SET status='accepted',accepted_by=$1,accepted_at=now() WHERE id=$2 AND company_id=$3",[user.id,invite.id,invite.company_id]);
     await db.query('UPDATE sessions SET active_company_id=$1 WHERE token_hash=$2',[invite.company_id,req.session.token_hash]);

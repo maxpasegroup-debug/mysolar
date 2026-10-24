@@ -1,7 +1,7 @@
 import {privilegedProtection} from '../auth/protection.js';
 import { transaction } from '../db/pool.js';
 import { lockedUser } from '../auth/sessions.js';
-import { permissionsFor } from '../permissions.js';
+import { companyPermissions } from '../permissions.js';
 import { HttpError } from '../errors.js';
 import { guard as commercialGuard } from '../commercial/policy.js';
 // All private company repositories MUST run inside this callback. Never accept a browser tenant ID.
@@ -14,7 +14,7 @@ export async function withCompany(req, permission, work) {
       JOIN companies c ON c.id=m.company_id WHERE m.user_id=$1 AND m.company_id=$2
       AND m.status='active' AND (c.status='active' OR m.role_id='owner') FOR SHARE OF m FOR UPDATE OF c`,[user.id,user.active_company_id]);
     if (!membership.rowCount) throw new HttpError(403,'COMPANY_ACCESS_DENIED','You no longer have access to the selected company.');
-    const permissions = await permissionsFor(db,membership.rows[0].role_id);
+    const permissions = await companyPermissions(db,membership.rows[0].role_id,user.active_company_id,user.id);
     if (!permissions.includes(permission)) throw new HttpError(403,'PERMISSION_DENIED','Your company role does not allow this action.');
     const company=membership.rows[0];
     if(company.role_id==='owner')await privilegedProtection(db,req,user);

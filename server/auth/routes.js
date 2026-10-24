@@ -9,7 +9,7 @@ import {accountProtection,verifySecondFactor} from './protection.js';
 import { config } from '../config.js';
 import * as v from '../validation.js';
 import { HttpError } from '../errors.js';
-import { permissionsFor } from '../permissions.js';
+import { permissionsFor,companyPermissions } from '../permissions.js';
 import { limit, hashPassword, verifyPassword, randomToken, digest } from './security.js';
 import { csrf, csrfToken, requireUser, issueSession, setSessionCookie, clearSessionCookie, lockedUser, invalidateAll } from './sessions.js';
 
@@ -22,16 +22,16 @@ async function sessionView(req) {
   if (!req.session.user_id) return { user:null, companies:[], activeCompany:null, permissions:[], platformPermissions:[], pinAvailable:pinAvailable(),pinEmailAvailable:pinEmailAvailable(),recoveryAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey), csrfToken:csrfToken(req.sessionToken) };
   return transaction(async db => {
     const user = await lockedUser(db,req);
-    const memberships = await db.query(`SELECT c.id,c.name,c.city,c.status,c.lifecycle,m.role_id AS role,r.label AS role_label,
+    const memberships = await db.query(`SELECT c.id,c.name,c.city,c.status,c.lifecycle,m.role_id AS role,coalesce(p.name,r.label) AS role_label,
       json_build_object('public_name',b.public_name,'logo_url',b.logo_url,'primary_color',b.primary_color,'secondary_color',b.secondary_color,'accent_color',b.accent_color) AS brand
-      FROM company_memberships m JOIN companies c ON c.id=m.company_id JOIN roles r ON r.id=m.role_id LEFT JOIN company_branding b ON b.company_id=c.id
+      FROM company_memberships m JOIN companies c ON c.id=m.company_id JOIN roles r ON r.id=m.role_id LEFT JOIN company_role_profiles p ON p.id=m.role_profile_id AND p.company_id=m.company_id LEFT JOIN company_branding b ON b.company_id=c.id
       WHERE m.user_id=$1 AND m.status='active' AND (c.status='active' OR m.role_id='owner') ORDER BY c.name,c.id`,[user.id]);
     const activeCompany = memberships.rows.find(row => row.id === user.active_company_id) || null;
     if (!activeCompany && user.active_company_id) await db.query('UPDATE sessions SET active_company_id=NULL WHERE token_hash=$1',[req.session.token_hash]);
     const admin = await db.query('SELECT role_id FROM platform_admin_grants WHERE user_id=$1',[user.id]);
     return {
       user:{id:user.id,email:user.email,name:user.display_name,emailVerified:Boolean(user.email_verified_at)},companies:memberships.rows,activeCompany,
-      permissions:activeCompany ? await permissionsFor(db,activeCompany.role) : [],
+      permissions:activeCompany ? await companyPermissions(db,activeCompany.role,activeCompany.id,user.id) : [],
       customerPermissions:await permissionsFor(db,'customer'),
       platformPermissions:admin.rowCount ? await permissionsFor(db,admin.rows[0].role_id) : [],
       pinAvailable:pinAvailable(),pinEmailAvailable:pinEmailAvailable(),recoveryAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey),csrfToken:csrfToken(req.sessionToken)

@@ -6,6 +6,8 @@ import {staffRoles,permissionsFor} from '../server/permissions.js';
 
 test('complete company onboarding and independent login for every supported staff role', {skip:!process.env.TEST_DATABASE_URL,timeout:180000},async t=>{
  const env=await isolatedApp(t),{db}=env;await env.applyMigrations(db);await env.start();
+ // Keep the real registration-quota check in one window even across a wall-clock rollover.
+ const quotaClock=Date.now();t.mock.method(Date,'now',()=>quotaClock);
  const password=randomBytes(30).toString('base64url'); // Ephemeral test secret, never printed or saved.
  const owner=env.client(),operator=env.client(),actors=[];
  async function register(client,role){await client.session();const r=await client.request('/auth/register','POST',{name:'[LOCAL TEST] '+role,email:role+'@example.invalid',password});assert.equal(r.status,201,JSON.stringify(r.data));await client.session();}

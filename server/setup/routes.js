@@ -10,6 +10,7 @@ import { staffRoles } from '../permissions.js';
 import {growthAccess,requirePro} from '../commercial/growth.js';
 import {staffDetails} from './staff.js';
 import {audit} from '../db/pool.js';
+import {peopleData} from '../people-sales.js';
 export const setup=Router();
 setup.use(requireUser);
 setup.use((req,res,next)=>['GET','HEAD'].includes(req.method)?next():csrf(req,res,next));
@@ -30,8 +31,8 @@ setup.get('/team',async(req,res)=>res.json(await withCompany(req,'company.setup.
   if(!ctx.permissions.includes('members.read'))throw new HttpError(403,'PERMISSION_DENIED','Team access is not allowed.');
   const members=await db.query('SELECT m.id,m.user_id,u.display_name AS name,u.email,m.role_id AS role,m.status,m.staff_details,m.staff_revision FROM company_memberships m JOIN users u ON u.id=m.user_id WHERE m.company_id=$1 ORDER BY m.created_at',[ctx.companyId]);
   const invitations=await db.query("SELECT id,email,role_id AS role,CASE WHEN status='pending' AND expires_at<=now() THEN 'expired' ELSE status END AS status,delivery,expires_at FROM company_invitations WHERE company_id=$1 ORDER BY created_at DESC LIMIT 100",[ctx.companyId]);
-  const events=await db.query("SELECT id,action,metadata,created_at FROM audit_events WHERE company_id=$1 AND (action LIKE 'membership.%' OR action LIKE 'invitation.%') ORDER BY id DESC LIMIT 30",[ctx.companyId]);
-  return {growth:await growthAccess(db,ctx.companyId),members:members.rows,invitations:invitations.rows,events:events.rows,assignableRoles:staffRoles,deliveryMode:config.invitationDelivery,available:true,emailAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey),readOnly:ctx.lifecycle==='suspended'};
+  const events=await db.query("SELECT id,action,metadata,created_at FROM audit_events WHERE company_id=$1 AND (action LIKE 'membership.%' OR action LIKE 'invitation.%' OR action LIKE 'controls.%') ORDER BY id DESC LIMIT 30",[ctx.companyId]);
+  return {controls:ctx.role==='owner'?await peopleData(db,ctx):null,growth:await growthAccess(db,ctx.companyId),members:members.rows,invitations:invitations.rows,events:events.rows,assignableRoles:staffRoles,deliveryMode:config.invitationDelivery,available:true,emailAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey),readOnly:ctx.lifecycle==='suspended'};
 })));
 setup.get('/branding',async(req,res)=>res.json(await withCompany(req,'company.brand.read',async(db,ctx)=>{
   const brand=(await db.query('SELECT public_name,logo_url,primary_color,secondary_color,accent_color,welcome_text,public_email,public_phone,description,appearance FROM company_branding WHERE company_id=$1',[ctx.companyId])).rows[0];return {brand};

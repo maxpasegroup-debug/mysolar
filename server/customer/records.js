@@ -1,3 +1,4 @@
+import {invoiceBalance} from '../operations/finance-ledger.js';
 import {printRecord} from '../print-record.js';
 import {Router} from 'express';
 import {requireUser} from '../auth/sessions.js';
@@ -28,10 +29,10 @@ customerRecords.get('/exports/:kind/:id',async(req,res)=>{
  const data=await withCustomer(req,permission(kind),async(db,user)=>{
   const record=kind==='quotations'?customerQuote(await quoteRecord(db,id,{user})):await ownRecord(db,user,kind,id);
   const lines=kind==='quotations'?await items(db,id):record.terms?.items||record.snapshot?.terms?.items||[];
-  const milestones=kind==='projects'?(await db.query('SELECT code,status,updated_at FROM project_milestones WHERE company_id=$1 AND project_id=$2 ORDER BY code',[record.company_id,id])).rows:[];
+  const milestones=kind==='projects'?(await db.query('SELECT code,status,updated_at FROM project_milestones WHERE company_id=$1 AND project_id=$2 AND customer_visible ORDER BY position',[record.company_id,id])).rows:[];
   const collections=kind==='invoices'?(await db.query('SELECT amount_paise,method,collected_on,reverses_id FROM customer_collections WHERE company_id=$1 AND invoice_id=$2 ORDER BY created_at,id LIMIT 1000',[record.company_id,id])).rows:[];
   await audit(db,{actor:user.id,action:'customer.record_exported',target:id,metadata:{kind,format}});
-  const totals=kind==='invoices'?(await db.query('SELECT coalesce(sum(amount_paise),0)::text AS amount,count(*)::int AS count FROM customer_collections WHERE company_id=$1 AND invoice_id=$2',[record.company_id,id])).rows[0]:null;return recordExport(kind,record,{lines,milestones,collections,totals});
+  const totals=kind==='invoices'?(await db.query('SELECT coalesce(sum(amount_paise),0)::text AS amount,count(*)::int AS count FROM customer_collections WHERE company_id=$1 AND invoice_id=$2',[record.company_id,id])).rows[0]:null;if(totals){totals.balance=await invoiceBalance(db,record.company_id,id);totals.credits=(await db.query('SELECT reference,amount_paise,posted_on,reverses_id FROM invoice_credit_notes WHERE company_id=$1 AND invoice_id=$2 ORDER BY created_at,id',[record.company_id,id])).rows;totals.refunds=(await db.query('SELECT amount_paise,method,posted_on,reverses_id FROM customer_refunds WHERE company_id=$1 AND invoice_id=$2 ORDER BY created_at,id',[record.company_id,id])).rows;}return recordExport(kind,record,{lines,milestones,collections,totals});
  });
  res.set({'Cache-Control':'private, no-store','Content-Disposition':`attachment; filename="mysolar-${kind}-${id}.${format}"`,'X-Content-Type-Options':'nosniff'});
  if(format==='html'){res.set('Content-Disposition','inline').type('html').send(printRecord(data));return;}

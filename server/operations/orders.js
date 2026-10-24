@@ -1,5 +1,6 @@
+import {orderFinance} from './finance-ledger.js';
 import * as c from './core.js';
-import { items as quotationItems,receivedEnquiry } from '../purchase/service.js';
+import { items as quotationItems,receivedEnquiry,customerQuote } from '../purchase/service.js';
 import { quote as validateCommercial } from '../purchase/validation.js';
 export const orders=c.router();
 orders.post('/orders',async(req,res)=>{
@@ -17,7 +18,7 @@ orders.post('/orders',async(req,res)=>{
    const issuer=(await db.query("SELECT coalesce(nullif(b.public_name,''),c.name) AS name,b.public_email,b.public_phone FROM companies c LEFT JOIN company_branding b ON b.company_id=c.id WHERE c.id=$1",[ctx.companyId])).rows[0];quote={id:null,reference:d.reference,version:1,tax_mode:agreed.taxMode,total_paise:agreed.totalPaise,totals:agreed.totals,delivery_paise:agreed.deliveryPaise,installation_paise:agreed.installationPaise,charges_tax_rate:agreed.chargesTaxRate,included:agreed.included,excluded:agreed.excluded,warranty:agreed.warranty,timeframe:agreed.timeframe,payment_terms:agreed.paymentTerms,assumptions:agreed.assumptions,installation_scope:agreed.installationScope,issuer_snapshot:issuer};source='agreed_line_items';
   }
   const owner=await c.employee(db,ctx,c.v.uuid(d.ownerId),['orders.manage']),id=c.randomUUID();if(d.acceptanceMode==='in_app'&&!contact.user_id)throw c.fail('This manual customer has no linked MY SOLAR account. Use a documented external agreement.');
-  const {created_by,...snapshot}=quote;await db.query('INSERT INTO business_orders(id,company_id,contact_id,quotation_id,reference,terms,total_paise,billing_address,service_address,expected_date,owner_id,acceptance_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',[id,ctx.companyId,contact.id,quote.id,c.plain(d.reference,'order reference',80,1),{source,quote:snapshot,items:lineItems},quote.total_paise,c.plain(d.billingAddress,'billing address',500,1),c.plain(d.serviceAddress,'service address',500,1),c.optionalDate(d.expectedDate),owner,c.v.choice(d.acceptanceMode,['in_app','external'],'acceptance method')]);
+  const snapshot=customerQuote(quote);await db.query('INSERT INTO business_orders(id,company_id,contact_id,quotation_id,reference,terms,total_paise,billing_address,service_address,expected_date,owner_id,acceptance_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',[id,ctx.companyId,contact.id,quote.id,c.plain(d.reference,'order reference',80,1),{source,quote:snapshot,items:lineItems},quote.total_paise,c.plain(d.billingAddress,'billing address',500,1),c.plain(d.serviceAddress,'service address',500,1),c.optionalDate(d.expectedDate),owner,c.v.choice(d.acceptanceMode,['in_app','external'],'acceptance method')]);
   for(let i=0;i<lineItems.length;i++){const line=lineItems[i];await db.query('INSERT INTO business_order_items(id,order_id,company_id,position,product_id,description,quantity_milli,unit,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[c.randomUUID(),id,ctx.companyId,i,line.product_id,line.description,String(c.quantity(line.quantity)),line.unit,line]);}
   await c.event(db,ctx,'orders',id,'drafted');return {id,message:'Order draft saved with immutable commercial terms. No acceptance or payment is implied.'};
  });}));
@@ -34,7 +35,7 @@ orders.post('/orders/:id/actions',async(req,res)=>{
    await db.query("UPDATE business_orders SET status='confirmed',agreement_reference=$1,agreement_notes=$2,confirmed_by=$3,confirmed_at=now(),revision=revision+1 WHERE id=$4 AND company_id=$5",[row.acceptance_mode==='external'?reference:'MY SOLAR explicit customer confirmation',notes,ctx.userId,row.id,ctx.companyId]);
   }else if(action==='cancel'){
    if(['fulfilled','cancelled'].includes(row.status))throw c.fail('A fulfilled or cancelled order cannot be cancelled here.');if(notes.length<10)throw c.fail('Record a cancellation reason.');
-   if((await db.query("SELECT id FROM customer_invoices WHERE company_id=$1 AND order_id=$2 AND status='issued'",[ctx.companyId,row.id])).rowCount)throw c.fail('Resolve the issued invoice before cancelling the order.');
+   if((await db.query("SELECT id FROM invoice_financial_balances WHERE company_id=$1 AND order_id=$2 AND status='issued' AND (net_invoiced<>0 OR settled<>0 OR customer_credit<>0)",[ctx.companyId,row.id])).rowCount)throw c.fail('Resolve the issued invoice before cancelling the order.');if(BigInt((await orderFinance(db,ctx.companyId,row.id)).unapplied)!==0n)throw c.fail('Refund or correct unapplied advances before cancelling this order.');
    if((await db.query("SELECT id FROM installation_projects WHERE company_id=$1 AND order_id=$2 AND status<>'cancelled'",[ctx.companyId,row.id])).rowCount)throw c.fail('Cancel or resolve the associated project before cancelling the order.');
    if((await db.query("SELECT 1 FROM service_contracts WHERE company_id=$1 AND order_id=$2 AND status='active' LIMIT 1",[ctx.companyId,row.id])).rowCount)throw c.fail('Resolve or cancel active maintenance commitments before cancelling this order.');
    const reservations=(await db.query('SELECT * FROM inventory_reservations WHERE company_id=$1 AND order_id=$2 AND remaining_milli>0 FOR UPDATE',[ctx.companyId,row.id])).rows;

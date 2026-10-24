@@ -1,3 +1,4 @@
+import {recordSurvey,prepareInstallation} from './installation-fixture.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
@@ -28,7 +29,7 @@ export async function operatingFlows(t,{db,a,b,customer,stranger,companyA,contac
   assert.equal((await assign('assign')).status,200);assert.equal((await stranger.request('/companies/current/operations/record/projects/'+project)).status,200);
   assert.equal((await stranger.request('/companies/current/operations/list/invoices')).status,403);assert.equal((await b.request('/companies/current/operations/record/projects/'+project)).status,404);
   assert.equal((await stranger.request('/companies/current/operations/projects/'+project+'/milestones','POST',{revision:await revision('installation_projects',project),code:'commissioning',status:'done',notes:'[TEST] disallowed manager step',evidenceReference:'TEST'})).status,409);
-  assert.equal((await stranger.request('/companies/current/operations/projects/'+project+'/milestones','POST',{revision:await revision('installation_projects',project),code:'survey',status:'done',notes:'[TEST] actual field survey record',evidenceReference:'TEST-SURVEY'})).status,200);
+  await recordSurvey(a,project);assert.equal((await stranger.request('/companies/current/operations/projects/'+project+'/milestones','POST',{revision:await revision('installation_projects',project),code:'survey',status:'done',notes:'[TEST] actual field survey record',evidenceReference:'TEST-SURVEY'})).status,200);
   const assigned=await a.request('/companies/current/operations/tasks','POST',{operationKey:randomUUID(),title:'[TEST] assigned field task',description:'',contactId:contact,orderId:order,projectId:project,serviceId:null,assigneeId:stranger.user.id,priority:'normal',dueDate:null});assert.equal(assigned.status,201);task=assigned.data.id;
   for(const status of ['in_progress','completed'])assert.equal((await stranger.request('/companies/current/operations/tasks/'+task+'/update','POST',{revision:await revision('business_tasks',task),status,completionNotes:'[TEST] recorded progress',assigneeId:stranger.user.id})).status,200);
   assert.equal((await assign('remove')).status,200);assert.equal((await stranger.request('/companies/current/operations/record/projects/'+project)).status,404);
@@ -37,7 +38,7 @@ export async function operatingFlows(t,{db,a,b,customer,stranger,companyA,contac
  await t.test('project completion requires ordered milestones and supporting records; customer sees only owned work',async()=>{
   assert.equal((await a.request('/companies/current/operations/projects/'+project+'/actions','POST',{revision:await revision('installation_projects',project),action:'active',reference:'',notes:'[TEST] start agreed work'})).status,200);
   assert.equal((await a.request('/companies/current/operations/projects/'+project+'/milestones','POST',{revision:await revision('installation_projects',project),code:'handover',status:'done',notes:'[TEST] premature handover',evidenceReference:'TEST'})).status,409);
-  for(const code of ['design','materials','schedule','installation','inspection','commissioning','handover'])assert.equal((await a.request('/companies/current/operations/projects/'+project+'/milestones','POST',{revision:await revision('installation_projects',project),code,status:'done',notes:'[TEST] recorded milestone',evidenceReference:'TEST-EVIDENCE'})).status,200);
+  await prepareInstallation(a,project);for(const code of ['design','materials','schedule','installation','inspection','commissioning','handover'])assert.equal((await a.request('/companies/current/operations/projects/'+project+'/milestones','POST',{revision:await revision('installation_projects',project),code,status:'done',notes:'[TEST] recorded milestone',evidenceReference:'TEST-EVIDENCE'})).status,200);
   assert.equal((await a.request('/companies/current/operations/projects/'+project+'/actions','POST',{revision:await revision('installation_projects',project),action:'completed',reference:'TEST-HANDOVER',notes:'[TEST] actual completed work'})).status,200);
   assert.equal((await customer.request('/customer/operations/record/projects/'+project)).status,200);assert.equal((await stranger.request('/customer/operations/record/projects/'+project)).status,404);
   assert.equal((await db.query('SELECT status FROM business_orders WHERE id=$1',[order])).rows[0].status,'confirmed');
@@ -56,9 +57,10 @@ export async function operatingFlows(t,{db,a,b,customer,stranger,companyA,contac
  });
  await t.test('service resolution follows allowed stages and shares only explicit customer updates',async()=>{
   const service=(await db.query('SELECT id FROM service_requests WHERE company_id=$1 AND order_id=$2',[companyA,order])).rows[0];
-  for(const status of ['triaged','assigned','in_progress','resolved','closed']){
-   const final=['resolved','closed'].includes(status),result=await a.request('/companies/current/operations/service/'+service.id+'/update','POST',{revision:await revision('service_requests',service.id),status,assigneeId:a.user.id,followUp:null,resolution:final?'PRIVATE-RESOLUTION-TEST':'',internalNotes:'PRIVATE-SERVICE-NOTE',customerUpdate:final?'[TEST] Customer-visible resolution':''});assert.equal(result.status,200);
+  for(const status of ['triaged','assigned','in_progress','resolved']){
+   const final=['resolved','closed'].includes(status),result=await a.request('/companies/current/operations/service/'+service.id+'/update','POST',{revision:await revision('service_requests',service.id),status,assigneeId:a.user.id,followUp:null,resolution:final?'PRIVATE-RESOLUTION-TEST':'',resolutionReference:'TEST-REPAIR-EVIDENCE',internalNotes:'PRIVATE-SERVICE-NOTE',customerUpdate:final?'[TEST] Customer-visible resolution':''});assert.equal(result.status,200);
   }
+  const pending=(await customer.request('/customer/operations/record/service/'+service.id)).data;assert.equal((await customer.request('/customer/operations/service/'+service.id+'/respond','POST',{operationKey:randomUUID(),revision:pending.record.revision,resolutionId:pending.retention.resolutions[0].id,accepted:true,rating:'5',comment:'[TEST] working again'})).status,200);
   const result=await customer.request('/customer/operations/record/service/'+service.id);assert.equal(result.status,200);assert.equal(result.data.record.status,'closed');assert.ok(!JSON.stringify(result.data).includes('PRIVATE-SERVICE-NOTE'));assert.ok(!JSON.stringify(result.data).includes('PRIVATE-RESOLUTION-TEST'));assert.ok(JSON.stringify(result.data).includes('[TEST] Customer-visible resolution'));
  });
 }

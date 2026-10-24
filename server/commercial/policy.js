@@ -6,7 +6,7 @@ export const policy=async(db,companyId)=>(await db.query('SELECT commercial_poli
 export function enabled(p,feature){return p?.writable===true&&p.features?.[feature]===true;}
 export function requireFeature(p,feature){if(!enabled(p,feature))throw new HttpError(403,'ENTITLEMENT_REQUIRED',`${features[feature]||'This action'} is not enabled for new actions under the current access policy. Existing authorized records remain readable. Contact the platform administrator.`);}
 export async function teamCapacity(db,companyId,excludeInvitation=null){const p=await policy(db,companyId);requireFeature(p,'team');const limit=p.limits.team;if(limit===null||limit===undefined)return;const r=(await db.query("SELECT (SELECT count(*) FROM company_memberships WHERE company_id=$1 AND status='active')+(SELECT count(*) FROM company_invitations WHERE company_id=$1 AND status='pending' AND expires_at>now() AND ($2::uuid IS NULL OR id<>$2)) AS used",[companyId,excludeInvitation])).rows[0];if(Number(r.used)>=limit)throw new HttpError(409,'PLAN_LIMIT_REACHED','The team allowance is full, including active members and pending invitations. Revoke an unused invitation, suspend an unneeded membership or contact the administrator.');}
-const groups={contacts:'crm',leads:'crm',orders:'orders',inventory:'inventory',stock:'inventory',reservations:'inventory',suppliers:'inventory',purchases:'inventory',receipts:'inventory',projects:'projects',tasks:'projects',invoices:'finance',collections:'finance',bills:'finance',service:'service'};
+const groups={funding:'finance',finance:'finance',contacts:'crm',leads:'crm',orders:'orders',inventory:'inventory',stock:'inventory',reservations:'inventory',suppliers:'inventory',purchases:'inventory',receipts:'inventory',projects:'projects',tasks:'projects',invoices:'finance',collections:'finance',bills:'finance',service:'service'};
 // Called inside withCompany, after permission checks and the existing company lock.
 export async function guard(db,ctx,req,permission){if(['GET','HEAD'].includes(req.method))return;const path=req.originalUrl.split('?')[0].replace(/\/{2,}/g,'/').replace(/^\/api\/companies\/current\/?/,'');
  if(ctx.role===PART_TIME_ROLE)await requirePro(db,ctx.companyId);
@@ -16,10 +16,12 @@ export async function guard(db,ctx,req,permission){if(['GET','HEAD'].includes(re
  if(path.startsWith('domains/')&&['suspend','remove'].includes(req.body?.action))return;
  if(path==='sia/messages'||path==='sia/history')return; // Read assistance / history deletion; external execution has its own budget guard.
  if(path.startsWith('sia/proposals/')&&req.body?.decision==='reject')return;
+ if(path==='controls/profiles'&&req.body?.active===false)return; // Owners can revoke profile access after subscription expiry.
  if(path.includes('/revoke')||permission==='members.manage'&&['suspended','removed'].includes(req.body?.status)||path.includes('offers/')&&['unpublish','deactivate'].includes(req.body?.action)||path==='marketplace-request'&&req.body?.requested===false)return;
  let required=[];
  if(path.startsWith('operations/')){const parts=path.split('/'),kind=parts[1]==='record'?parts[2]:parts[1];if(groups[kind])required=[groups[kind]];else if(kind!=='notifications')throw new HttpError(403,'ENTITLEMENT_UNMAPPED','This action requires commercial-policy configuration. Existing records remain readable.');}
  else if(path.startsWith('sia/proposals'))required=['sia_ceo','crm'];
+ else if(path.startsWith('controls/'))required=[path==='controls/policy'?'crm':'team'];
  else if(path.startsWith('offers'))required=['catalogue'];
  else if(path.includes('quotations'))required=['quotations'];
  else if(path.startsWith('enquiries'))required=[path.endsWith('/quotations')?'quotations':'crm'];

@@ -2,7 +2,7 @@ import {config} from '../config.js';
 import {enqueueMail} from '../mail-queue.js';
 import {randomUUID} from 'node:crypto';
 import {transaction,audit} from '../db/pool.js';
-import {permissionsFor} from '../permissions.js';
+import {permissionsFor,companyPermissions} from '../permissions.js';
 import {policy,enabled} from '../commercial/policy.js';
 import {requireStaffEntitlement} from '../commercial/growth.js';
 import * as operations from '../operations/core.js';
@@ -10,23 +10,25 @@ import {reminders,dueCondition} from './catalogue.js';
 
 const log=(db,job,outcome,code)=>db.query('INSERT INTO automation_attempts(job_id,attempt,outcome,code) VALUES($1,$2,$3,$4)',[job.id,job.attempts,outcome,code]);
 const day=async db=>(await db.query("SELECT (now() AT TIME ZONE 'Asia/Kolkata')::date::text AS day")).rows[0].day;
-async function member(db,companyId,userId){const row=(await db.query("SELECT m.role_id FROM company_memberships m JOIN users u ON u.id=m.user_id WHERE m.company_id=$1 AND m.user_id=$2 AND m.status='active' AND u.status='active'",[companyId,userId])).rows[0];if(!row)return null;return {companyId,userId,role:row.role_id,permissions:await permissionsFor(db,row.role_id)};}
+async function member(db,companyId,userId){const row=(await db.query("SELECT m.role_id FROM company_memberships m JOIN users u ON u.id=m.user_id WHERE m.company_id=$1 AND m.user_id=$2 AND m.status='active' AND u.status='active'",[companyId,userId])).rows[0];if(!row)return null;return {companyId,userId,role:row.role_id,permissions:await companyPermissions(db,row.role_id,companyId,userId)};}
 async function source(db,rule,recordId=null,after=null){const d=reminders[rule.kind];return (await db.query(`SELECT r.*,r.${d.date}::text AS ${d.date} FROM ${d.table} r WHERE r.company_id=$1 AND ($2::uuid IS NULL OR r.id=$2) AND ${dueCondition(rule.kind)} AND ($4::uuid IS NULL OR r.id>$4) ORDER BY r.id LIMIT 100 ${recordId?'FOR SHARE':''}`,[rule.company_id,recordId,rule.lead_days,after])).rows;}
 async function customerId(db,kind,row){return kind==='quotation'?(await db.query('SELECT customer_id AS user_id FROM customer_enquiries WHERE id=$1',[row.enquiry_id])).rows[0]?.user_id:(await db.query('SELECT user_id FROM company_contacts WHERE id=$1 AND company_id=$2',[row.contact_id,row.company_id])).rows[0]?.user_id;}
 async function allowedRecipient(db,rule,row,userId,audience){
  const d=reminders[rule.kind];
  const preference=(await db.query('SELECT enabled,kinds FROM reminder_preferences WHERE user_id=$1 FOR SHARE',[userId])).rows[0];
  if(preference&&(!preference.enabled||!preference.kinds.includes(rule.kind)))return false;
+ if(audience==='customer'&&rule.kind==='milestone'&&!(await db.query("SELECT 1 FROM project_milestones WHERE company_id=$1 AND project_id=$2 AND customer_visible AND status NOT IN ('done','not_applicable') LIMIT 1",[rule.company_id,row.id])).rowCount)return false;
+ if(audience==='customer'&&d.staffOnly)return false;
  if(audience==='customer')return rule.customers&&d.customerPermission&&(rule.kind!=='quotation'||(await permissionsFor(db,'customer')).includes('customer.enquiries.own'))&&(await permissionsFor(db,'customer')).includes(d.customerPermission)&&await customerId(db,rule.kind,row)===userId;
  const ctx=await member(db,rule.company_id,userId);if(!ctx)return false;
  const assigned=d.assignee&&row[d.assignee]===userId;
- const projectAssignment=rule.kind==='milestone'&&(await db.query('SELECT 1 FROM project_assignments WHERE project_id=$1 AND company_id=$2 AND user_id=$3',[row.id,rule.company_id,userId])).rowCount>0;
+ const projectAssignment=['milestone','stage'].includes(rule.kind)&&(await db.query('SELECT 1 FROM project_assignments WHERE project_id=$1 AND company_id=$2 AND user_id=$3',[row[d.target||'id'],rule.company_id,userId])).rowCount>0;
  if(ctx.role!=='owner'&&!assigned&&!projectAssignment)return false;
  try{await requireStaffEntitlement(db,ctx.companyId,ctx.role);}catch(error){if(error.status)return false;throw error;}
  if(rule.kind==='quotation')return ctx.permissions.includes('quotations.read')&&ctx.permissions.includes('leads.read');
  try{operations.readPermission(ctx,d.recordKind);}catch(error){if(error.status)return false;throw error;}
- const b=new operations.Bindings(),where=operations.scope(ctx,d.recordKind,b);where.push(`r.id=${b.add(['maintenance','renewal'].includes(rule.kind)?row.order_id:row.id)}`);
- return (await db.query(`SELECT 1 FROM ${d.table} r WHERE ${where.join(' AND ')}`,b.values)).rowCount>0;
+ const b=new operations.Bindings(),where=operations.scope(ctx,d.recordKind,b);where.push(`r.id=${b.add(['maintenance','renewal'].includes(rule.kind)?row.order_id:row[d.target||'id'])}`);
+ return (await db.query(`SELECT 1 FROM ${operations.definitions[d.recordKind][0]} r WHERE ${where.join(' AND ')}`,b.values)).rowCount>0;
 }
 
 // Called inside a transaction. Company-before-rule locking matches interactive changes.
@@ -38,7 +40,7 @@ export async function planRule(db,id){
  if(company.status==='active'&&company.lifecycle==='active'&&enabled(await policy(db,rule.company_id),reminders[rule.kind].feature)){
   const rows=await source(db,rule,null,rule.cursor_day===today?rule.cursor_id:null);
   for(const row of rows){
-   const recipients=(await db.query(`SELECT m.user_id FROM company_memberships m JOIN users u ON u.id=m.user_id WHERE m.company_id=$1 AND m.status='active' AND u.status='active' AND (m.role_id='owner' OR m.user_id=$2 ${rule.kind==='milestone'?'OR EXISTS(SELECT 1 FROM project_assignments p WHERE p.company_id=m.company_id AND p.project_id=$3 AND p.user_id=m.user_id)':''}) ORDER BY m.user_id LIMIT 200`,rule.kind==='milestone'?[rule.company_id,row[reminders[rule.kind].assignee],row.id]:[rule.company_id,reminders[rule.kind].assignee?row[reminders[rule.kind].assignee]:null])).rows.map(x=>({id:x.user_id,audience:'staff'}));
+   const recipients=(await db.query(`SELECT m.user_id FROM company_memberships m JOIN users u ON u.id=m.user_id WHERE m.company_id=$1 AND m.status='active' AND u.status='active' AND (m.role_id='owner' OR m.user_id=$2 ${['milestone','stage'].includes(rule.kind)?'OR EXISTS(SELECT 1 FROM project_assignments p WHERE p.company_id=m.company_id AND p.project_id=$3 AND p.user_id=m.user_id)':''}) ORDER BY m.user_id LIMIT 200`,['milestone','stage'].includes(rule.kind)?[rule.company_id,row[reminders[rule.kind].assignee],row[reminders[rule.kind].target||'id']]:[rule.company_id,reminders[rule.kind].assignee?row[reminders[rule.kind].assignee]:null])).rows.map(x=>({id:x.user_id,audience:'staff'}));
    if(rule.customers){const customer=await customerId(db,rule.kind,row);if(customer&&!recipients.some(x=>x.id===customer))recipients.push({id:customer,audience:'customer'});}
    for(const recipient of recipients){if(!await allowedRecipient(db,rule,row,recipient.id,recipient.audience))continue;
     queued+=(await db.query(`INSERT INTO automation_jobs(id,company_id,rule_id,rule_revision,kind,record_id,recipient_id,audience,occurrence,source_date,available_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,($9::date+make_time($11,0,0)) AT TIME ZONE 'Asia/Kolkata') ON CONFLICT(company_id,kind,record_id,recipient_id,channel,occurrence) DO NOTHING RETURNING id`,[randomUUID(),rule.company_id,rule.id,rule.revision,rule.kind,row.id,recipient.id,recipient.audience,today,row[reminders[rule.kind].date],rule.hour_ist])).rowCount;
@@ -70,7 +72,7 @@ export async function deliver(db,claimed,{afterNotification=async()=>{}}={}){
  if(!await allowedRecipient(db,rule,row,job.recipient_id,job.audience))return finish(db,job,'skipped','PREFERENCE_OR_ACCESS');
  const d=reminders[job.kind],notificationId=job.id;
  if(job.kind==='quotation')await db.query('INSERT INTO workflow_notifications(id,user_id,company_id,enquiry_id,version_id,message) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING',[notificationId,job.recipient_id,job.audience==='staff'?job.company_id:null,row.enquiry_id,row.id,'Reminder: '+d.message]);
- else await db.query('INSERT INTO operations_notifications(id,user_id,company_id,record_type,record_id,message) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING',[notificationId,job.recipient_id,job.audience==='staff'?job.company_id:null,d.recordKind,['maintenance','renewal'].includes(job.kind)?row.order_id:row.id,'Reminder: '+d.message]);
+ else await db.query('INSERT INTO operations_notifications(id,user_id,company_id,record_type,record_id,message) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING',[notificationId,job.recipient_id,job.audience==='staff'?job.company_id:null,d.recordKind,['maintenance','renewal'].includes(job.kind)?row.order_id:row[d.target||'id'],'Reminder: '+d.message]);
  if(rule.email_enabled&&config.mailEnabled&&config.dataEncryptionKey){const recipient=(await db.query('SELECT u.email FROM users u JOIN reminder_preferences p ON p.user_id=u.id WHERE u.id=$1 AND u.email_verified_at IS NOT NULL AND p.email_enabled AND p.enabled',[job.recipient_id])).rows[0];if(recipient&&! (await db.query("SELECT 1 FROM mail_jobs WHERE kind='reminder' AND reference_hash=$1",[job.id])).rowCount)await enqueueMail(db,{kind:'reminder',userId:job.recipient_id,companyId:job.company_id,email:recipient.email,referenceHash:job.id,subject:'MY Solar reminder: '+d.label,text:'A saved reminder is available. Sign in to review the authorized source record: '+config.origin+'/#/'+(job.audience==='staff'?'distributor':'customer')+'/notifications',expiresAt:new Date(Date.now()+6*3600000)});}
  await afterNotification(); // Dependency injection for rollback/recovery integration tests only.
  await db.query("INSERT INTO automation_deliveries(job_id,notification_id,channel) VALUES($1,$2,'in_app') ON CONFLICT(job_id) DO NOTHING",[job.id,notificationId]);

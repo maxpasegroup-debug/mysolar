@@ -16,3 +16,16 @@ export async function permissionsFor(db, role) {
   const result = await db.query('SELECT permission_id FROM role_permissions WHERE role_id = $1 ORDER BY permission_id', [role]);
   return result.rows.map(row => row.permission_id);
 }
+// A company profile can only restrict the immutable base role; owner/platform grants
+// are never obtained through a company profile. Re-evaluate on every protected request.
+export async function companyPermissions(db,role,companyId,userId){
+ const baseline=await permissionsFor(db,role);
+ if(role==='owner')return baseline;
+ const member=(await db.query('SELECT m.role_profile_id,p.base_role,p.permissions,p.active FROM company_memberships m LEFT JOIN company_role_profiles p ON p.id=m.role_profile_id AND p.company_id=m.company_id WHERE m.company_id=$1 AND m.user_id=$2',[companyId,userId])).rows[0];
+ if(!member)return [];
+ if(!member.role_profile_id)return baseline;
+ if(!member.active||member.base_role!==role)return baseline.filter(p=>['workspace.read','company.read'].includes(p));
+ const granted=baseline.filter(p=>member.permissions.includes(p)||['workspace.read','company.read'].includes(p));
+ if(granted.includes('quotations.read')&&member.permissions.includes('quotations.approve'))granted.push('quotations.approve');
+ return [...new Set(granted)];
+}

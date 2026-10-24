@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID as id} from 'node:crypto';
+import {isolatedApp} from './helpers/isolated-app.mjs';
+import {migrationManifest} from '../server/db/migrations.js';
+
+test('funding migration preserves prior records, restricts grants and enforces ledger and relationship integrity',{skip:!process.env.TEST_DATABASE_URL,timeout:120000},async t=>{
+ const {db,applyMigrations}=await isolatedApp(t);await applyMigrations(db,{through:'026_installation_materials.sql'});
+ const user=id(),company=id(),contact=id(),other=id(),project=id(),file=id(),application=id(),entry=id();
+ await db.query("INSERT INTO users(id,email,display_name,password_hash) VALUES($1,'funding-upgrade@example.invalid','[TEST] Owner','NOT-A-LOGIN-HASH')",[user]);
+ await db.query("INSERT INTO companies(id,name,city,business_email,created_by) VALUES($1,'[TEST] Company','[TEST] City','fixture@example.invalid',$2)",[company,user]);
+ await db.query("INSERT INTO company_memberships(id,company_id,user_id,role_id) VALUES($1,$2,$3,'owner')",[id(),company,user]);
+ for(const cid of [contact,other])await db.query("INSERT INTO company_contacts(id,company_id,name,kind) VALUES($1,$2,'[TEST] Customer','individual')",[cid,company]);
+ await db.query("INSERT INTO installation_projects(id,company_id,contact_id,reference,name,location,scope,manager_id) VALUES($1,$2,$3,'TEST-FUNDING-UPGRADE','[TEST]','[TEST]','[TEST]',$4)",[project,company,contact,user]);
+ await db.query("INSERT INTO managed_files(id,company_id,record_kind,record_id,uploaded_by,filename,mime,size,sha256,payload,customer_visible,scan_status) VALUES($1,$2,'projects',$3,$4,'[TEST] Existing.pdf','application/pdf',10,'test-checksum','[TEST] Existing sealed data',true,'clean')",[file,company,project,user]);
+ const before=(await db.query('SELECT * FROM managed_files WHERE id=$1',[file])).rows[0],applied=[];await applyMigrations(db,{onApplied:name=>applied.push(name)});assert.deepEqual(applied,(await migrationManifest()).filter(m=>m.name>'026_installation_materials.sql').map(m=>m.name));
+ assert.deepEqual((await db.query('SELECT * FROM managed_files WHERE id=$1',[file])).rows[0],before);assert.equal((await db.query('SELECT count(*)::int AS n FROM funding_applications')).rows[0].n,0);
+ const permissions=async role=>(await db.query("SELECT permission_id FROM role_permissions WHERE role_id=$1 AND permission_id LIKE 'funding.%' ORDER BY permission_id",[role])).rows.map(x=>x.permission_id);
+ assert.deepEqual(await permissions('accounts'),['funding.manage','funding.read']);assert.deepEqual(await permissions('sales'),['funding.assigned.read','funding.assigned.update']);assert.deepEqual(await permissions('field_engineer'),[]);assert.ok((await permissions('owner')).includes('funding.correct'));
+ const insert="INSERT INTO funding_applications(id,company_id,contact_id,project_id,kind,reference,institution,requested_paise,approved_paise,decision,decision_on,decision_reference,status,submitted_on,application_reference,assignee_id,created_by) VALUES($1,$2,$3,$4,'loan',$5,'[TEST] Bank',10000,8000,'approved',current_date,'[TEST] actual letter','decision_recorded',current_date,$5,$6,$6)";
+ await assert.rejects(db.query(insert,[id(),company,other,project,'TEST-MISMATCH',user]),{code:'23503'});await db.query(insert,[application,company,contact,project,'TEST-VALID',user]);
+ await assert.rejects(db.query("UPDATE funding_applications SET kind='subsidy' WHERE id=$1",[application]),{code:'23514'});await assert.rejects(db.query('UPDATE funding_applications SET disbursed_paise=10 WHERE id=$1',[application]),{code:'23514'});
+ await db.query("INSERT INTO funding_disbursements(id,company_id,application_id,amount_paise,external_reference,posted_on,recipient,evidence_reference,reason,actor_id) VALUES($1,$2,$3,3000,'TEST-DISBURSEMENT',current_date,'[TEST] Customer','[TEST] Evidence','[TEST] Actual record',$4)",[entry,company,application,user]);
+ assert.equal((await db.query('SELECT disbursed_paise FROM funding_applications WHERE id=$1',[application])).rows[0].disbursed_paise,'3000');
+ await assert.rejects(db.query("INSERT INTO funding_disbursements(company_id,application_id,amount_paise,external_reference,posted_on,recipient,evidence_reference,reason,actor_id) VALUES($1,$2,5001,'TEST-EXCESS',current_date,'[TEST] Customer','[TEST]','[TEST]',$3)",[company,application,user]),{code:'23514'});
+ await assert.rejects(db.query("INSERT INTO funding_disbursements(company_id,application_id,amount_paise,posted_on,recipient,evidence_reference,reason,actor_id,reverses_id) VALUES($1,$2,-2000,current_date,'[TEST] Customer','[TEST]','[TEST]',$3,$4)",[company,application,user,entry]),{code:'23514'});
+ await db.query("INSERT INTO funding_disbursements(company_id,application_id,amount_paise,posted_on,recipient,evidence_reference,reason,actor_id,reverses_id) VALUES($1,$2,-3000,current_date,'[TEST] Customer','[TEST]','[TEST]',$3,$4)",[company,application,user,entry]);
+ assert.equal((await db.query('SELECT disbursed_paise FROM funding_applications WHERE id=$1',[application])).rows[0].disbursed_paise,'0');await assert.rejects(db.query('DELETE FROM funding_disbursements WHERE id=$1',[entry]),{code:'23514'});
+ await assert.rejects(db.query("INSERT INTO managed_files(id,company_id,record_kind,record_id,uploaded_by,filename,mime,size,sha256,payload,customer_visible,scan_status) VALUES($1,$2,'funding',$3,$4,'[TEST].pdf','application/pdf',10,'test','test',true,'clean')",[id(),company,application,user]),{code:'23514'});
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM customer_collections')).rows[0].n,0);assert.deepEqual((await db.query('SELECT name,checksum FROM schema_migrations ORDER BY name')).rows,await migrationManifest());const again=[];await applyMigrations(db,{onApplied:name=>again.push(name)});assert.deepEqual(again,[]);
+});

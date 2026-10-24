@@ -1,3 +1,5 @@
+import {requireNoOutstandingWork,ensureWorkPermissions} from '../operations/work-handoffs.js';
+import {validateRoleProfile} from '../people-sales.js';
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { transaction, audit } from '../db/pool.js';
@@ -66,7 +68,7 @@ companies.get('/current/members',async(req,res)=>res.json(await withCompany(req,
   return {members:rows.rows,assignableRoles:staffRoles};
 })));
 companies.post('/current/members',async(req,res)=>{
-  const input=v.body(req.body,['email','role']);const email=v.email(input.email),role=v.choice(input.role,staffRoles,'company role');
+  const input=v.body(req.body,['email','role','profileId'],['email','role']);const email=v.email(input.email),role=v.choice(input.role,staffRoles,'company role');
   await limit(req,'member-add',req.session.user_id,30,3600);
   res.status(201).json(await withCompany(req,'members.manage',async(db,ctx)=>{
     if(role===PART_TIME_ROLE)throw new HttpError(400,'INVITATION_REQUIRED','Invite part-time executives through Team so they can accept their assigned access.');
@@ -75,8 +77,8 @@ companies.post('/current/members',async(req,res)=>{
     const existing=await db.query('SELECT id FROM company_memberships WHERE company_id=$1 AND user_id=$2',[ctx.companyId,user.rows[0].id]);
     if(existing.rowCount)throw new HttpError(409,'MEMBER_EXISTS','This account already has a membership. Update that membership instead.');
     await teamCapacity(db,ctx.companyId);
-    const id=randomUUID();
-    await db.query('INSERT INTO company_memberships(id,company_id,user_id,role_id) VALUES($1,$2,$3,$4)',[id,ctx.companyId,user.rows[0].id,role]);
+    const id=randomUUID(),profile=await validateRoleProfile(db,ctx.companyId,role,input.profileId);
+    await db.query('INSERT INTO company_memberships(id,company_id,user_id,role_id,role_profile_id) VALUES($1,$2,$3,$4,$5)',[id,ctx.companyId,user.rows[0].id,role,profile]);
     await audit(db,{actor:ctx.userId,company:ctx.companyId,action:'membership.created',target:id,metadata:{role}});
     return {message:'Company membership created.'};
   }));
@@ -91,6 +93,7 @@ companies.patch('/current/members/:membershipId',async(req,res)=>{
     if(role!==member.rows[0].role_id&&(role===PART_TIME_ROLE||member.rows[0].role_id===PART_TIME_ROLE))throw new HttpError(409,'ROLE_TRANSFER_REQUIRED','Part-time sales access cannot be converted into a broader role here. Suspend or remove access and use a separately reviewed invitation.');
     if(status==='active')await requireStaffEntitlement(db,ctx.companyId,role);
     if(status==='active'&&member.rows[0].status!=='active')await teamCapacity(db,ctx.companyId);
+    if(status!=='active')await requireNoOutstandingWork(db,ctx,member.rows[0].user_id);else if(role!==member.rows[0].role_id)await ensureWorkPermissions(db,ctx,member.rows[0].user_id,await permissionsFor(db,role));
     await db.query('UPDATE company_memberships SET role_id=$1,status=$2,updated_at=now() WHERE id=$3 AND company_id=$4',[role,status,id,ctx.companyId]);
     // Membership is checked on every request. Session retrieval clears a revoked selection.
     // Avoid taking another user's session lock here; that would invert the authorization lock order.

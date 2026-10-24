@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID as id} from 'node:crypto';
+import {isolatedApp} from './helpers/isolated-app.mjs';
+import {migrationManifest} from '../server/db/migrations.js';
+
+test('management automation upgrade preserves milestones, preferences and explicit rule approval',{skip:!process.env.TEST_DATABASE_URL,timeout:120000},async t=>{
+ const {db,applyMigrations}=await isolatedApp(t);await applyMigrations(db,{through:'028_after_sales_retention.sql'});const user=id(),company=id(),contact=id(),project=id();
+ await db.query("INSERT INTO users(id,email,display_name,password_hash) VALUES($1,'report-upgrade@example.invalid','[TEST] Owner','NOT-A-LOGIN-HASH')",[user]);await db.query("INSERT INTO companies(id,name,city,business_email,created_by) VALUES($1,'[TEST] Company','[TEST] City','fixture@example.invalid',$2)",[company,user]);await db.query("INSERT INTO company_contacts(id,company_id,kind,name) VALUES($1,$2,'individual','[TEST] Customer')",[contact,company]);
+ await db.query("INSERT INTO installation_projects(id,company_id,contact_id,reference,name,location,scope,manager_id) VALUES($1,$2,$3,'TEST-REPORT-UPGRADE','[TEST]','[TEST]','[TEST]',$4)",[project,company,contact,user]);await db.query("INSERT INTO project_milestones(company_id,project_id,code,title,position,status,notes) VALUES($1,$2,'survey','[TEST] Survey',10,'blocked','[TEST] Preserve this')",[company,project]);await db.query("INSERT INTO reminder_preferences(user_id,kinds,enabled) VALUES($1,ARRAY['service'],false)",[user]);
+ const before=(await db.query('SELECT * FROM project_milestones WHERE project_id=$1',[project])).rows[0],applied=[];await applyMigrations(db,{onApplied:n=>applied.push(n)});assert.deepEqual(applied,(await migrationManifest()).filter(x=>x.name>'028_after_sales_retention.sql').map(x=>x.name));const after=(await db.query('SELECT * FROM project_milestones WHERE project_id=$1',[project])).rows[0];for(const key of Object.keys(before))assert.deepEqual(after[key],before[key]);assert.match(after.id,/^[0-9a-f-]{36}$/);assert.equal((await db.query('SELECT count(*)::int AS n FROM automation_rules WHERE enabled')).rows[0].n,0);assert.deepEqual((await db.query('SELECT enabled,kinds FROM reminder_preferences WHERE user_id=$1',[user])).rows[0],{enabled:false,kinds:['service']});
+ await assert.rejects(db.query("INSERT INTO automation_rules(id,company_id,kind,customers) VALUES($1,$2,'funding',true)",[id(),company]),{code:'23514'});await db.query("INSERT INTO automation_rules(id,company_id,kind,lead_days) VALUES($1,$2,'maintenance',3)",[id(),company]);
+ assert.deepEqual((await db.query('SELECT name,checksum FROM schema_migrations ORDER BY name')).rows,await migrationManifest());const again=[];await applyMigrations(db,{onApplied:n=>again.push(n)});assert.deepEqual(again,[]);assert.equal((await db.query('SELECT id FROM project_milestones WHERE project_id=$1',[project])).rows[0].id,after.id);
+});

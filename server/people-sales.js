@@ -1,3 +1,4 @@
+import {workforceTemplates} from './workforce-templates.js';
 import {handoffPreview,performHandoff,ensureWorkPermissions} from './operations/work-handoffs.js';
 import * as c from './operations/core.js';
 import {withCompany} from './tenancy/context.js';
@@ -25,7 +26,7 @@ export async function peopleData(db,ctx){
  const teams=(await db.query('SELECT * FROM company_teams WHERE company_id=$1 ORDER BY name',[ctx.companyId])).rows;
  const people=(await db.query('SELECT m.id,m.user_id,u.display_name AS name,u.status AS user_status,m.role_id,m.status,m.role_profile_id,m.team_id,m.reporting_manager_id,m.people_revision FROM company_memberships m JOIN users u ON u.id=m.user_id WHERE m.company_id=$1 ORDER BY u.display_name',[ctx.companyId])).rows;
  const bases={};for(const role of staffRoles){bases[role]=await permissionsFor(db,role);if(bases[role].includes('quotations.read'))bases[role].push('quotations.approve');}
- return {profiles,teams,people,bases,policy:await salesPolicy(db,ctx.companyId),owner:ctx.role==='owner'};
+ return {templates:await workforceTemplates(db),profiles,teams,people,bases,policy:await salesPolicy(db,ctx.companyId),owner:ctx.role==='owner'};
 }
 peopleSales.get('/',async(req,res)=>res.json(await withCompany(req,'members.read',(db,ctx)=>peopleData(db,ctx))));
 peopleSales.post('/teams',async(req,res)=>{c.v.body(req.body,['id','revision','name','managerId','active','reason']);const d=req.body;res.json(await owner(req,async(db,ctx)=>{

@@ -29,7 +29,7 @@ test('shared team/customer invitations, ownership, service and Boss overview', {
   };
   await t.test('all supported employee roles can use private sharing without SMTP',async()=>{
    const team=await owner.request('/companies/current/team');assert.equal(team.data.available,true);assert.equal(team.data.emailAvailable,false);
-   const ordinaryRoles=['sales','supervisor','field_engineer','inventory_manager','accounts'];
+   const ordinaryRoles=['sales','supervisor','field_engineer','inventory_manager','accounts','auditor'];
    assert.deepEqual(team.data.assignableRoles,[...ordinaryRoles,'part_time_sales']);
    const denied=await owner.request('/companies/current/invitations','POST',{email:'part_time_sales@example.invalid',role:'part_time_sales',delivery:'share'});assert.equal(denied.status,403);assert.equal(denied.data.error.code,'PRO_REQUIRED');
    for(const role of ordinaryRoles){const r=await owner.request('/companies/current/invitations','POST',{email:role==='sales'?staff.user.email:role+'@example.invalid',role,delivery:'share'});assert.equal(r.status,201,JSON.stringify(r.data));assert.equal(r.data.kind,'employee');if(role==='sales')employeeToken=token(r);}

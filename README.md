@@ -437,3 +437,7 @@ See AUTH_REPAIR_HANDOFF.md for migration 021, mobile/PIN signup and login, verif
 ## Email/password authentication and email reset codes
 
 See [VERIFIED_EMAIL_SIGNUP_HANDOFF.md](VERIFIED_EMAIL_SIGNUP_HANDOFF.md) and [EMAIL_PASSWORD_AUTH_HANDOFF.md](EMAIL_PASSWORD_AUTH_HANDOFF.md) for the current default customer/business signup, login and eight-digit password-reset code flow. Migrations 030-032 are required together with the matching web/mail-worker release. Customer and business identities remain separate and require different globally unique emails. Both signup journeys verify an email OTP before creating an account. Mobile/PIN remains an explicit compatibility option for existing users, rather than the default signup journey. Local checks are not evidence of production migration or actual inbox delivery.
+
+## MY Solar OS - distributor foundation
+
+See [MY_SOLAR_OS_PHASE_1_HANDOFF.md](MY_SOLAR_OS_PHASE_1_HANDOFF.md) for the distributor-only blue/white OS presentation, restricted workforce templates, read-only auditor role and migration 033. Customer dashboard files and the logo are unchanged. This local implementation does not establish live email delivery, operational alerts or production acceptance.

@@ -64,8 +64,8 @@ test('complete company onboarding and independent login for every supported staf
   assert.equal((await employee.request('/auth/logout','POST',{})).status,200);await employee.session();assert.equal(employee.user,null);
   assert.equal((await employee.request('/auth/login','POST',{email:role+'@example.invalid',password})).status,200);const session=await employee.session();assert.equal(employee.user.id,id);assert.equal(employee.company.id,companyId);assert.equal(employee.company.role,role);
   assert.deepEqual(session.data.permissions,await permissionsFor(db,role));assert.deepEqual(session.data.platformPermissions,[]);
-  assert.equal((await employee.request('/companies/current/operations/dashboard')).data.company,null);
-  assert.equal((await employee.request('/companies/current/team')).status,403);assert.equal((await employee.request('/platform/companies')).status,403);
+  const daily=(await employee.request('/companies/current/operations/dashboard')).data;if(role==='auditor')assert.ok(daily.company);else assert.equal(daily.company,null);
+  assert.equal((await employee.request('/companies/current/team')).status,role==='auditor'?200:403);assert.equal((await employee.request('/platform/companies')).status,403);
   assert.equal((await employee.request('/companies/current/invitations','POST',{email:'forbidden@example.invalid',role:'sales',delivery:'share'})).status,403);
   actors.push({employee,id,role});
  });

@@ -1,3 +1,4 @@
+import {requireCustomer} from '../auth/account-type.js';
 import * as c from './core.js';
 import {HttpError} from '../errors.js';
 import {transaction,audit} from '../db/pool.js';
@@ -51,7 +52,7 @@ export async function acceptCustomerInvitation(req,res){
  if(!/^[A-Za-z0-9_-]{43}$/.test(token))throw c.badInput('Open a valid private invitation link.');
  await limit(req,'customer-invite-accept',req.session.user_id,15,3600);
  res.json(await transaction(async db=>{
-  const user=await lockedUser(db,req),denied=()=>new HttpError(400,'INVALID_INVITATION','This invitation is expired, changed, unavailable or belongs to another account. Ask the company for a new invitation.');
+  const user=await lockedUser(db,req);requireCustomer(user);const denied=()=>new HttpError(400,'INVALID_INVITATION','This invitation is expired, changed, unavailable or belongs to another account. Ask the company for a new invitation.');
   const ref=(await db.query('SELECT company_id,contact_id FROM customer_access_invitations WHERE token_hash=$1',[digest(token)])).rows[0];
   if(!ref)throw denied();
   const company=(await db.query("SELECT id FROM companies WHERE id=$1 AND status='active' AND lifecycle='active' FOR UPDATE",[ref.company_id])).rows[0];if(!company)throw denied();

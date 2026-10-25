@@ -1,3 +1,5 @@
+import nodemailer from 'nodemailer';
+import {mockSignupMail,verifiedRegister} from './helpers/identity.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -15,7 +17,7 @@ test('customer and distributor authentication against isolated PostgreSQL', {ski
  try{
   await db.query('CREATE SCHEMA "'+schema+'"');await db.query('SET search_path TO "'+schema+'",public');await applyMigrations(db);
   const appUrl=new URL(url);appUrl.searchParams.set('options','-c search_path='+schema+',public');
-  unitEnvironment();process.env.DATABASE_URL=appUrl.href;
+  unitEnvironment();process.env.DATABASE_URL=appUrl.href;const messages=mockSignupMail(t,nodemailer);
   const {app}=await import('../server/index.js');pool=(await import('../server/db/pool.js')).pool;
   server=app.listen(0,'127.0.0.1');await once(server,'listening');const base='http://127.0.0.1:'+server.address().port;
   const password='Isolated auth review 123!';
@@ -28,7 +30,7 @@ test('customer and distributor authentication against isolated PostgreSQL', {ski
   const customer=client(),distributor=client();
   await t.test('customer signup creates a profile, rotates session and grants no company privileges',async()=>{
    assert.equal((await customer.request('/auth/session')).status,200);const anonymous=customer.cookie;
-   const r=await customer.request('/auth/register','POST',{name:'[TEST] Customer',email:'customer-auth@example.invalid',password});assert.equal(r.status,201);assert.notEqual(customer.cookie,anonymous);assert.match(r.cookie,/HttpOnly/i);
+   const r=await verifiedRegister(customer,{name:'[TEST] Customer',email:'customer-auth@example.invalid',password},db,messages);assert.equal(r.status,201);assert.notEqual(customer.cookie,anonymous);assert.match(r.cookie,/HttpOnly/i);
    const session=await customer.request('/auth/session');assert.equal(session.data.user.email,'customer-auth@example.invalid');assert.deepEqual(session.data.companies,[]);assert.deepEqual(session.data.platformPermissions,[]);
    assert.equal((await customer.request('/customer/profile')).status,200);
    assert.equal((await customer.request('/platform/commercial/settings')).status,403);
@@ -46,7 +48,7 @@ test('customer and distributor authentication against isolated PostgreSQL', {ski
    assert.equal((await customer.request('/auth/session')).data.user.id,id);
   });
   await t.test('distributor signup remains personal until explicit company creation',async()=>{
-   await distributor.request('/auth/session');assert.equal((await distributor.request('/auth/register','POST',{name:'[TEST] Distributor',email:'distributor-auth@example.invalid',password})).status,201);
+   await distributor.request('/auth/session');assert.equal((await verifiedRegister(distributor,{accountType:'business',name:'[TEST] Distributor',email:'distributor-auth@example.invalid',password},db,messages)).status,201);
    const session=await distributor.request('/auth/session');assert.deepEqual(session.data.companies,[]);assert.equal(session.data.activeCompany,null);
    assert.equal((await distributor.request('/companies','POST',{name:'[TEST] Auth Company',city:'Kochi',email:'business-auth@example.invalid',phone:''})).status,201);
    const companySession=await distributor.request('/auth/session');assert.equal(companySession.data.activeCompany.role,'owner');assert.equal(companySession.data.companies.length,1);assert.deepEqual(companySession.data.platformPermissions,[]);

@@ -6,10 +6,10 @@ const Onboarding = (() => {
   };
   let dialog, controller, audience, busy=false, success=false, closing=false, returnFocus, chooseAudience, version=0;
   const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const submitLabel = form => form?.elements.challenge?'Verify email and create account':Account.session.pinEmailAvailable?'Send email code':content[audience].submit;
+  const submitLabel = form => form?.elements.challenge?'Verify email and create account':content[audience].submit;
   const markup = () => '<dialog id="onboarding-dialog" class="ob-dialog" aria-labelledby="ob-title" aria-describedby="ob-intro"></dialog>';
   function fields() {
-    if(Account.session.pinEmailAvailable)return MobileAuth.signupFields('ob');
+
     return `<label for="ob-name">Your name<input id="ob-name" name="name" autocomplete="name" maxlength="100" required aria-describedby="ob-name-error"><small id="ob-name-error" class="ob-field-error"></small></label><label for="ob-email">Email address<input id="ob-email" name="email" type="email" autocomplete="email" maxlength="254" required aria-describedby="ob-email-error"><small id="ob-email-error" class="ob-field-error"></small></label><label for="ob-password">Password<input id="ob-password" name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required aria-describedby="ob-password-hint ob-password-error"><small id="ob-password-hint" class="ob-hint">Use 12–128 characters, as required by your account.</small><small id="ob-password-error" class="ob-field-error"></small></label>`;
   }
   function formMarkup(mode) {
@@ -65,9 +65,9 @@ const Onboarding = (() => {
     dialog.querySelectorAll('button').forEach(button=>button.disabled=value);
     dialog.querySelectorAll('a').forEach(anchor=>{anchor.inert=value;});
     const confirming=Boolean(form.elements.challenge);
-    const pendingLabel=confirming?'Verifying your email…':Account.session.pinEmailAvailable?'Requesting your email code…':'Creating your account…';
+    const pendingLabel=confirming?'Verifying your email...':'Requesting your email code...';
     form.querySelector('.ob-submit').innerHTML=value?'<span class="ob-spinner" aria-hidden="true"></span>'+pendingLabel:submitLabel(form)+icon('arrow');
-    form.querySelector('.ob-progress').textContent=value?(confirming?'Verifying your code and creating your account securely.':Account.session.pinEmailAvailable?'Requesting a code for your recovery email. Your account is not created yet.':'Creating your account securely. Please wait before closing.'):'';
+    form.querySelector('.ob-progress').textContent=value?(confirming?'Verifying your code and creating your account securely.':'Requesting email verification. Your account is not created yet.'):'';
   }
   async function submit(form) {
     if(busy||closing||success||!validate(form))return;
@@ -77,7 +77,7 @@ const Onboarding = (() => {
     const values=Object.fromEntries(new FormData(form));
     try {
       const result=await content[mode].register(values);
-      if(result.pending){if(epoch!==version||!dialog?.isConnected)return;setBusy(form,false);MobileAuth.requestConfirmation(form,result);return;}
+      if(result.pending){if(epoch!==version||!dialog?.isConnected)return;setBusy(form,false);(result.emailSignup?MobileAuth.requestEmailConfirmation:MobileAuth.requestConfirmation)(form,result);return;}
       if(epoch!==version||!dialog?.isConnected)return;
       setBusy(form,false);
       form.reset();

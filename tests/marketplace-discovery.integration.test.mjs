@@ -21,7 +21,7 @@ test('discovery migration upgrades taxonomy without changing category IDs or act
 });
 
 test('marketplace discovery uses eligible offers, real prices and customer-owned location',{skip:!process.env.TEST_DATABASE_URL,timeout:120000},async t=>{
- const {db,a,b,customer,stranger,companyA,companyB,product,base}=await connectedFixture(t);
+ const {db,a,b,customer,stranger,companyA,companyB,product,base}=await connectedFixture(t,{strangerAccountType:'customer'});
  await t.test('all eight category selections return only products in the selected category',async()=>{
   const categories=(await customer.request('/public/categories')).data.categories.filter(c=>c.discovery_key),ids=[];
   for(const category of categories){const id=randomUUID();ids.push(id);await db.query("INSERT INTO catalogue_products(id,category_id,name,brand,model,unit,schema_revision,created_by,published_by,published_at,status,public_visible) VALUES($1,$2,$3,'[TEST] ReviewBrand',$4,'unit',1,$5,$5,now(),'published',true)",[id,category.id,'[TEST] Review '+category.discovery_key,'ReviewModel-'+category.discovery_key,a.user.id]);}

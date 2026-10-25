@@ -22,7 +22,7 @@ test('isolated PostgreSQL: PRO partners, staff assignments and downgrade boundar
  const relation=async id=>(await db.query('SELECT * FROM company_partner_relationships WHERE id=$1',[id])).rows[0];
  const edit=async(actor,id,values={})=>{const row=await relation(id);return actor.request('/companies/current/partners/'+id,'PATCH',{revision:row.revision,status:'active',assigneeId:row.assignee_id||'',notes:row.notes,...values});};
  await t.test('pre-billing and browser-supplied plan/status claims cannot grant growth features',async()=>{
-  const anonymous=env.client();await anonymous.session();const sixth=await anonymous.request('/auth/register','POST',{name:'[TEST] rate limit',email:'sixth@example.invalid',password:'Integration-only password 123!'});assert.equal(sixth.status,429);assert.equal((await db.query('SELECT count(*)::int AS n FROM users')).rows[0].n,5);
+  const anonymous=env.client();await anonymous.session();const sixth=await anonymous.request('/auth/register','POST',{name:'[TEST] rate limit',email:'sixth@example.invalid',password:'Integration-only password 123!'});assert.equal(sixth.status,503);assert.equal((await db.query('SELECT count(*)::int AS n FROM users')).rows[0].n,5);
   assert.equal((await a.request('/companies/current/partners','POST',{name:'[TEST]',email:b.user.email})).data.error.code,'PRO_REQUIRED');
   assert.equal((await a.request('/companies/current/invitations','POST',{email:executive.user.email,role:'part_time_sales',delivery:'share'})).data.error.code,'PRO_REQUIRED');
   assert.equal((await b.request('/companies/current/subscription','POST',{status:'active',planCode:'pro',features:{partners:true}})).status,404);

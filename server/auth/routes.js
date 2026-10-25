@@ -1,4 +1,7 @@
+import {emailRegistration} from './email-registration.js';
+import {accountType} from './account-type.js';
 import { Router } from 'express';
+import {passwordReset} from './password-reset.js';
 import {pinRoutes} from './pin-routes.js';
 import {pinAvailable,pinEmailAvailable} from './pin-security.js';
 import {createIdentity,validateInvitation} from './registration.js';
@@ -30,9 +33,9 @@ async function sessionView(req) {
     if (!activeCompany && user.active_company_id) await db.query('UPDATE sessions SET active_company_id=NULL WHERE token_hash=$1',[req.session.token_hash]);
     const admin = await db.query('SELECT role_id FROM platform_admin_grants WHERE user_id=$1',[user.id]);
     return {
-      user:{id:user.id,email:user.email,name:user.display_name,emailVerified:Boolean(user.email_verified_at)},companies:memberships.rows,activeCompany,
+      user:{id:user.id,email:user.email,name:user.display_name,accountType:user.account_type,emailVerified:Boolean(user.email_verified_at)},companies:memberships.rows,activeCompany,
       permissions:activeCompany ? await companyPermissions(db,activeCompany.role,activeCompany.id,user.id) : [],
-      customerPermissions:await permissionsFor(db,'customer'),
+      customerPermissions:user.account_type==='business'?[]:await permissionsFor(db,'customer'),
       platformPermissions:admin.rowCount ? await permissionsFor(db,admin.rows[0].role_id) : [],
       pinAvailable:pinAvailable(),pinEmailAvailable:pinEmailAvailable(),recoveryAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey),csrfToken:csrfToken(req.sessionToken)
     };
@@ -46,28 +49,15 @@ auth.get('/session',async(req,res)=>{
   }
   res.json(await sessionView(req));
 });
-auth.post('/register',csrf,async(req,res)=>{
+auth.use(emailRegistration);
 
-  if(req.session.user_id) throw new HttpError(409,'ALREADY_SIGNED_IN','Sign out before creating another account.');
-  const input=v.body(req.body,['name','email','password','invitationToken'],['name','email','password']);
-  const name=v.text(input.name,'name',100), email=v.email(input.email), password=v.password(input.password);
-  const invited=await validateInvitation(pool,input.invitationToken,email);
-  if(invited)await limit(req,'invited-register',digest(input.invitationToken),3,3600);
-  await limit(req,invited?'invited-register-ip':'register-ip',req.ip,invited?30:5,3600);
-  const hash=await hashPassword(password);
-  const issued=await transaction(async db=>{
-    const id=await createIdentity(db,{name,email,passwordHash:hash});
-    return issueSession(db,id,req.session.token_hash);
-  });
-  setSessionCookie(res,issued);res.status(201).json({message:'Account created. You are signed in.'});
-});
 auth.post('/login',csrf,async(req,res)=>{
   await limit(req,'login-ip',req.ip,20);
-  const input=v.body(req.body,['email','password','code'],['email','password']);
+  const input=v.body(req.body,['email','password','code','accountType'],['email','password']);
   const email=v.email(input.email), password=v.password(input.password);
   await limit(req,'login-account',email,10);
-  const result=await pool.query('SELECT id,password_hash,status FROM users WHERE email=$1',[email]);
-  const record=result.rows[0];
+  const type=input.accountType===undefined?null:accountType(input.accountType);const result=await pool.query('SELECT id,password_hash,status FROM users WHERE email=$1 AND ($2::text IS NULL OR account_type=$2)',[email,type]);
+  const record=result.rowCount===1?result.rows[0]:null;
   dummyHash ||= hashPassword(randomToken());
   const valid=await verifyPassword(record?.password_hash || await dummyHash,password);
   if(!valid || !record || record.status!=='active') {
@@ -102,11 +92,11 @@ auth.post('/logout-all',csrf,requireUser,async(req,res)=>{
 });
 auth.post('/recover',csrf,async(req,res)=>{
   await limit(req,'recover-ip',req.ip,8,3600);
-  const input=v.body(req.body,['email']);const email=v.email(input.email);
+  const input=v.body(req.body,['email','accountType'],['email']);const email=v.email(input.email);const type=input.accountType===undefined?null:accountType(input.accountType);
   await limit(req,'recover-account',email,3,3600);
   // Do not look up an account or mint a token when delivery is not configured.
   if(!transport||!config.dataEncryptionKey) throw new HttpError(503,'RECOVERY_UNAVAILABLE','Email recovery is not configured. No recovery email was sent. Contact the platform operator.');
-  await transaction(async db=>{const user=(await db.query("SELECT id,email FROM users WHERE email=$1 AND status='active' FOR UPDATE",[email])).rows[0];if(!user)return;const token=randomToken(),tokenHash=digest(token);await db.query('DELETE FROM password_reset_tokens WHERE user_id=$1',[user.id]);await db.query("INSERT INTO password_reset_tokens(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '30 minutes')",[tokenHash,user.id]);await enqueueMail(db,{kind:'recovery',userId:user.id,email:user.email,referenceHash:tokenHash,subject:'Reset your MY SOLAR password',text:'Reset your password within 30 minutes: '+config.origin+'/#/reset-password?token='+token,expiresAt:new Date(Date.now()+1800000)});await audit(db,{actor:user.id,action:'auth.recovery_queued'});});
+  await transaction(async db=>{const candidates=await db.query("SELECT id,email FROM users WHERE email=$1 AND status='active' AND ($2::text IS NULL OR account_type=$2) FOR UPDATE",[email,type]);if(candidates.rowCount!==1)return;const user=candidates.rows[0];const token=randomToken(),tokenHash=digest(token);await db.query('DELETE FROM password_reset_tokens WHERE user_id=$1',[user.id]);await db.query("INSERT INTO password_reset_tokens(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '30 minutes')",[tokenHash,user.id]);await enqueueMail(db,{kind:'recovery',userId:user.id,email:user.email,referenceHash:tokenHash,subject:'Reset your MY SOLAR password',text:'Reset your password within 30 minutes: '+config.origin+'/#/reset-password?token='+token,expiresAt:new Date(Date.now()+1800000)});await audit(db,{actor:user.id,action:'auth.recovery_queued'});});
   res.status(202).json({message:recoveryMessage});
 });
 auth.post('/reset-password',csrf,async(req,res)=>{
@@ -131,5 +121,6 @@ auth.post('/reset-password',csrf,async(req,res)=>{
   clearSessionCookie(res);res.json({message:'Password changed. All account sessions were signed out. Please sign in again.'});
 });
 
+auth.use('/password-reset',passwordReset);
 auth.use('/pin',pinRoutes);
 auth.use(accountProtection);

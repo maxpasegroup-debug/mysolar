@@ -1,3 +1,4 @@
+import {accountType} from './account-type.js';
 import {Router} from 'express';
 import {randomInt,randomUUID} from 'node:crypto';
 import {pool,transaction,audit} from '../db/pool.js';
@@ -20,11 +21,12 @@ let dummyPinHash;
 function emailReady(){if(!pinEmailAvailable())throw new HttpError(503,'PIN_EMAIL_UNAVAILABLE','Mobile/PIN setup and recovery email are not configured. No code was sent. Use existing email/password access or contact support.');}
 function codeValue(value){if(typeof value!=='string'||!/^\d{6}$/.test(value))throw invalid();return value;}
 async function queueCode(db,req,{purpose,email,mobile,userId=null,revision=null,context=null}){
- await db.query('SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))',[email,'pin-'+purpose]);
- await db.query('UPDATE pin_challenges SET used_at=now() WHERE email=$1 AND purpose=$2 AND used_at IS NULL',[email,purpose]);
+ await db.query('SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))',[mobile+':'+email+':'+(userId||'signup'),'pin-'+purpose]);
+ await db.query('UPDATE pin_challenges SET used_at=now() WHERE mobile=$1 AND email=$2 AND purpose=$3 AND user_id IS NOT DISTINCT FROM $4::uuid AND used_at IS NULL',[mobile,email,purpose,userId]);
+ const accountLabel=context?.accountType||(userId?(await db.query('SELECT account_type FROM users WHERE id=$1',[userId])).rows[0]?.account_type:null)||'account';
  const id=randomUUID(),code=String(randomInt(0,1000000)).padStart(6,'0'),expires=new Date(Date.now()+600000);
  await db.query('INSERT INTO pin_challenges(id,purpose,user_id,email,mobile,session_hash,credential_revision,code_hash,context,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[id,purpose,userId,email,mobile,req.session.token_hash,revision,pinDigest('otp',id+':'+code),context?seal(context):null,expires]);
- await enqueueMail(db,{kind:'pin_otp',userId,email,referenceHash:id,subject:purpose==='reset'?'Reset your MY Solar PIN':'Verify your MY Solar recovery email',text:'Your MY Solar email verification code is '+code+'. It expires in 10 minutes. Never share this code. If you did not request it, ignore this email.',expiresAt:expires});
+ await enqueueMail(db,{kind:'pin_otp',userId,email,referenceHash:id,subject:purpose==='reset'?'Reset your MY Solar PIN':'Verify your MY Solar recovery email',text:'Account: '+accountLabel+'; mobile ending '+mobile.slice(-4)+'. Your MY Solar email verification code is '+code+'. It expires in 10 minutes. Never share this code. If you did not request it, ignore this email.',expiresAt:expires});
  await audit(db,{actor:userId,action:'auth.pin_code_queued',metadata:{purpose}});return id;
 }
 async function checkedChallenge(db,req,id,purpose,code){
@@ -35,13 +37,13 @@ async function checkedChallenge(db,req,id,purpose,code){
 }
 pinRoutes.post('/register/request',async(req,res)=>{
  if(req.session.user_id)throw new HttpError(409,'ALREADY_SIGNED_IN','Use Account security to add mobile/PIN to your existing account.');
- emailReady();const input=v.body(req.body,['name','email','mobile','invitationToken'],['name','email','mobile']);
+ emailReady();const input=v.body(req.body,['name','email','mobile','invitationToken','accountType'],['name','email','mobile']);
  const name=v.text(input.name,'name',100),email=v.email(input.email),mobile=mobileNumber(input.mobile);
- const invited=await validateInvitation(pool,input.invitationToken,email);
- await limit(req,'pin-signup-ip',req.ip,invited?30:5,3600);await limit(req,'pin-signup-email',email,3,3600);await limit(req,'pin-signup-mobile',mobile,3,3600);await limit(req,'pin-signup-cooldown',email,1,60);
+ const invited=await validateInvitation(pool,input.invitationToken,email);const type=accountType(input.accountType||invited||'customer');if(invited&&invited!==type)throw new HttpError(400,'INVITATION_ACCOUNT_TYPE','Choose the account type required by this invitation.');
+ await limit(req,'pin-signup-ip',req.ip,invited?30:5,3600);await limit(req,'pin-signup-email',type+':'+email,3,3600);await limit(req,'pin-signup-mobile',mobile,3,3600);await limit(req,'pin-signup-cooldown',type+':'+email,1,60);
  const challenge=await transaction(async db=>{
   if((await db.query('SELECT 1 FROM users WHERE email=$1 UNION ALL SELECT 1 FROM mobile_credentials WHERE mobile=$2',[email,mobile])).rowCount)return randomUUID();
-  return queueCode(db,req,{purpose:'signup',email,mobile,context:{name,...(input.invitationToken?{invitationToken:input.invitationToken}:{})}});
+  return queueCode(db,req,{purpose:'signup',email,mobile,context:{name,accountType:type,...(input.invitationToken?{invitationToken:input.invitationToken}:{})}});
  });res.status(202).json({challenge,message:generic});
 });
 pinRoutes.post('/register/confirm',async(req,res)=>{
@@ -51,7 +53,7 @@ pinRoutes.post('/register/confirm',async(req,res)=>{
  const result=await transaction(async db=>{
   const row=await checkedChallenge(db,req,id,'signup',code);if(!row)return null;
   const context=unseal(row.context);await validateInvitation(db,context.invitationToken,row.email);
-  const userId=await createIdentity(db,{name:context.name,email:row.email,passwordHash:await hashPassword(randomToken()+randomToken()),emailVerified:true});
+  const userId=await createIdentity(db,{name:context.name,email:row.email,passwordHash:await hashPassword(randomToken()+randomToken()),emailVerified:true,accountType:accountType(context.accountType)});
   await db.query('INSERT INTO mobile_credentials(user_id,mobile,pin_hash) VALUES($1,$2,$3)',[userId,row.mobile,await hashPin(input.pin)]);
   await db.query('UPDATE pin_challenges SET used_at=now() WHERE id=$1',[id]);
   await audit(db,{actor:userId,action:'auth.pin_enabled'});return issueSession(db,userId,req.session.token_hash);

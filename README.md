@@ -433,3 +433,7 @@ Use `npm run test:localdb` for isolated database verification and `npm run test:
 ## Mobile/PIN authentication (optional rollout)
 
 See AUTH_REPAIR_HANDOFF.md for migration 021, mobile/PIN signup and login, verified-email OTP reset, existing-account enrollment and rollback limitations. Configure an independent AUTH_PIN_PEPPER, encrypted mail delivery and the mail worker before enabling this experience. Existing email/password access remains available. Mobile login identifiers are not SMS-verified. No production migration/deployment is implied by local implementation.
+
+## Email/password authentication and email reset codes
+
+See [VERIFIED_EMAIL_SIGNUP_HANDOFF.md](VERIFIED_EMAIL_SIGNUP_HANDOFF.md) and [EMAIL_PASSWORD_AUTH_HANDOFF.md](EMAIL_PASSWORD_AUTH_HANDOFF.md) for the current default customer/business signup, login and eight-digit password-reset code flow. Migrations 030-032 are required together with the matching web/mail-worker release. Customer and business identities remain separate and require different globally unique emails. Both signup journeys verify an email OTP before creating an account. Mobile/PIN remains an explicit compatibility option for existing users, rather than the default signup journey. Local checks are not evidence of production migration or actual inbox delivery.

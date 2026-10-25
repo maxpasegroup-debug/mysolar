@@ -16,7 +16,7 @@ test('mobile/PIN identity, email proof, durable lockout and recovery boundaries'
  await t.test('signup cannot trust roles, account IDs or skip email proof',async()=>{
   const s=await guest.session();assert.equal(s.data.pinAvailable,true);assert.equal(s.data.pinEmailAvailable,true);
   assert.equal((await guest.request('/auth/pin/register/request','POST',{name:'Test',email,mobile,role:'owner'})).status,400);
-  const r=await guest.request('/auth/pin/register/request','POST',{name:'[FICTIONAL] Mobile Owner',email,mobile});assert.equal(r.status,202,JSON.stringify(r.data));challenge=r.data.challenge;
+  const r=await guest.request('/auth/pin/register/request','POST',{name:'[FICTIONAL] Mobile Owner',email,mobile,accountType:'business'});assert.equal(r.status,202,JSON.stringify(r.data));challenge=r.data.challenge;
   assert.equal((await db.query('SELECT 1 FROM users WHERE email=$1',[email])).rowCount,0);
   assert.equal(messages.length,0);assert.equal((await guest.request('/auth/pin/register/confirm','POST',{challenge,otp:'nototp',pin})).status,400);
   const code=await deliver(email);const row=(await db.query('SELECT * FROM pin_challenges WHERE id=$1',[challenge])).rows[0];assert.notEqual(row.code_hash,code);assert.ok(!row.context.includes('Mobile Owner'));

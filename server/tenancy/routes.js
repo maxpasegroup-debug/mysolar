@@ -1,3 +1,4 @@
+import {requireBusiness} from '../auth/account-type.js';
 import {requireNoOutstandingWork,ensureWorkPermissions} from '../operations/work-handoffs.js';
 import {validateRoleProfile} from '../people-sales.js';
 import { Router } from 'express';
@@ -23,7 +24,7 @@ companies.post('/',async(req,res)=>{
   const businessType=input.businessType===undefined?'distributor':v.choice(input.businessType,['distributor','installer','both'],'business type');
   const name=v.text(input.name,'company name'),city=v.text(input.city,'city'),email=v.email(input.email),phone=v.phone(input.phone);
   const company=await transaction(async db=>{
-    const user=await lockedUser(db,req);const id=randomUUID();
+    const user=await lockedUser(db,req);requireBusiness(user);const id=randomUUID();
     const result=await db.query(`INSERT INTO companies(id,name,city,business_email,phone,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING ${companyFields}`,[id,name,city,email,phone,user.id]);
     await db.query('UPDATE company_profiles SET business_type=$1 WHERE company_id=$2',[businessType,id]);
     // Ownership is granted only by this atomic, server-controlled creation path.
@@ -72,8 +73,8 @@ companies.post('/current/members',async(req,res)=>{
   await limit(req,'member-add',req.session.user_id,30,3600);
   res.status(201).json(await withCompany(req,'members.manage',async(db,ctx)=>{
     if(role===PART_TIME_ROLE)throw new HttpError(400,'INVITATION_REQUIRED','Invite part-time executives through Team so they can accept their assigned access.');
-    const user=await db.query("SELECT id FROM users WHERE email=$1 AND status='active'",[email]);
-    if(!user.rowCount)throw new HttpError(400,'MEMBER_UNAVAILABLE','This account cannot be added. Ask the person to register first and confirm their account email.');
+    const user=await db.query("SELECT id FROM users WHERE email=$1 AND status='active' AND (account_type='business' OR account_type IS NULL)",[email]);
+    if(user.rowCount!==1)throw new HttpError(400,'MEMBER_UNAVAILABLE','This account cannot be added. Ask the person to register first and confirm their account email.');
     const existing=await db.query('SELECT id FROM company_memberships WHERE company_id=$1 AND user_id=$2',[ctx.companyId,user.rows[0].id]);
     if(existing.rowCount)throw new HttpError(409,'MEMBER_EXISTS','This account already has a membership. Update that membership instead.');
     await teamCapacity(db,ctx.companyId);

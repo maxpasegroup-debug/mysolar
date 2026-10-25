@@ -61,7 +61,7 @@ test('durable authorized reminders in disposable PostgreSQL',{skip:!process.env.
   const quoteRule=(await db.query("SELECT id FROM automation_rules WHERE company_id=$1 AND kind='quotation'",[companyA])).rows[0].id;
   assert.equal(await run(connection=>planRule(connection,quoteRule)),2);
   await makeReady();let job;while((job=await run(claim)))assert.equal(await run(connection=>deliver(connection,job)),'delivered');
-  const feed=ok(await customer.request('/customer/operations/notifications'));assert.ok(feed.items.some(row=>row.version_id===quotation&&row.message.startsWith('Reminder:')));assert.ok(!ok(await stranger.request('/customer/operations/notifications')).items.some(row=>row.version_id===quotation));
+  const feed=ok(await customer.request('/customer/operations/notifications'));assert.ok(feed.items.some(row=>row.version_id===quotation&&row.message.startsWith('Reminder:')));assert.equal((await stranger.request('/customer/operations/notifications')).status,404);
   const contact=(await db.query('SELECT contact_id FROM crm_leads WHERE id=$1',[lead])).rows[0].contact_id,order=randomUUID();
   await db.query("INSERT INTO business_orders(id,company_id,contact_id,reference,terms,total_paise,billing_address,service_address,owner_id,status,acceptance_mode,agreement_reference,confirmed_by,confirmed_at) VALUES($1,$2,$3,'TEST-REMINDER-ORDER','{}',10000,'','',$4,'confirmed','external','TEST-CONSENT',$4,now())",[order,companyA,contact,a.user.id]);
   const invoice=randomUUID(),project=randomUUID(),service=randomUUID();

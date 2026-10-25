@@ -1,3 +1,4 @@
+import {seedIdentity} from './helpers/identity.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -17,8 +18,8 @@ test('shared team/customer invitations, ownership, service and Boss overview', {
   const client=()=>({cookie:'',csrf:'',user:null,company:null,async request(path,method='GET',body,extra={}){
    const r=await fetch(base+'/api'+path,{method,headers:{Cookie:this.cookie,...(path.startsWith('/companies/current')?{'X-Company-ID':this.company?.id||''}:{}),...(method==='GET'?{}:{Origin:'http://localhost:3000','Content-Type':'application/json','X-CSRF-Token':this.csrf}),...extra},...(body===undefined?{}:{body:JSON.stringify(body)})});
    const cookie=r.headers.getSetCookie()[0];if(cookie)this.cookie=cookie.split(';')[0];const data=await r.json();if(path==='/auth/session'&&r.ok){this.csrf=data.csrfToken;this.user=data.user;this.company=data.activeCompany;}return {status:r.status,data};
-  },async session(){return this.request('/auth/session');},async register(name){await this.session();assert.equal((await this.request('/auth/register','POST',{name:'[TEST] '+name,email:name+'@example.invalid',password:'Business access test 123!'})).status,201);await this.session();}});
-  const owner=client(),customer=client(),staff=client(),other=client();for(const [c,name] of [[owner,'access-owner'],[customer,'access-customer'],[staff,'access-staff'],[other,'access-other']])await c.register(name);
+  },async session(){return this.request('/auth/session');},async register(name,accountType='business'){await this.session();await seedIdentity(db,{name:'[TEST] '+name,email:name+'@example.invalid',password:'Business access test 123!',accountType});assert.equal((await this.request('/auth/login','POST',{email:name+'@example.invalid',password:'Business access test 123!',accountType})).status,200);await this.session();}});
+  const owner=client(),customer=client(),staff=client(),other=client();for(const [c,name] of [[owner,'access-owner'],[customer,'access-customer'],[staff,'access-staff'],[other,'access-other']])await c.register(name,c===customer?'customer':'business');
   const company=async(c,name)=>{assert.equal((await c.request('/companies','POST',{name:'[TEST] '+name,city:'Kochi',email:name+'@example.invalid',phone:''})).status,201);await c.session();await db.query("UPDATE companies SET lifecycle='active' WHERE id=$1",[c.company.id]);await c.session();return c.company.id;};
   const companyId=await company(owner,'access-company'),otherId=await company(other,'other-company');let employeeToken,contactId,customerToken,orderId;
   const token=result=>new URLSearchParams(new URL(result.data.shareUrl).hash.split('?')[1]).get('token');
@@ -40,12 +41,12 @@ test('shared team/customer invitations, ownership, service and Boss overview', {
    assert.equal((await db.query('SELECT count(*)::int AS n FROM password_reset_tokens')).rows[0].n,0);
   });
   await t.test('team invitation is recipient-bound, single-use and enforces the selected role',async()=>{
-   assert.equal((await customer.request('/invitations/preview','POST',{token:employeeToken,kind:'employee'})).status,400);
+   assert.equal((await customer.request('/invitations/preview','POST',{token:employeeToken,kind:'employee'})).status,403);
    const preview=await staff.request('/invitations/preview','POST',{token:employeeToken,kind:'employee'});assert.equal(preview.status,200);assert.equal(preview.data.role,'sales');assert.equal(preview.data.company_name,'[TEST] access-company');
    await db.query("UPDATE company_invitations SET expires_at=now()-interval '1 second' WHERE email=$1",[staff.user.email]);
    assert.equal((await staff.request('/invitations/accept','POST',{token:employeeToken})).status,400);
    await db.query("UPDATE company_invitations SET expires_at=now()+interval '1 hour' WHERE email=$1",[staff.user.email]);
-   assert.equal((await customer.request('/invitations/accept','POST',{token:employeeToken})).status,400);
+   assert.equal((await customer.request('/invitations/accept','POST',{token:employeeToken})).status,403);
    assert.equal((await staff.request('/invitations/accept','POST',{token:employeeToken})).status,200);await staff.session();assert.equal(staff.company.role,'sales');
    assert.equal((await staff.request('/invitations/accept','POST',{token:employeeToken})).status,400);
    assert.equal((await staff.request('/companies/current/invitations','POST',{email:'deny@example.invalid',role:'accounts',delivery:'share'})).status,403);
@@ -75,8 +76,8 @@ test('shared team/customer invitations, ownership, service and Boss overview', {
    await db.query("INSERT INTO operations_events(company_id,record_type,record_id,action,actor_id,notes,customer_visible) VALUES($1,'orders',$2,'internal_note',$3,'TEST PRIVATE NOTE',false)",[companyId,orderId,owner.user.id]);
    assert.equal((await customer.request('/customer/operations/record/orders/'+orderId)).status,404);
    const preview=await customer.request('/invitations/preview','POST',{token:customerToken,kind:'customer'});assert.equal(preview.status,200);assert.equal(preview.data.role,'customer');
-   assert.equal((await other.request('/invitations/preview','POST',{token:customerToken,kind:'customer'})).status,400);
-   assert.equal((await other.request('/invitations/customer/accept','POST',{token:customerToken,confirmAccess:true})).status,400);
+   assert.equal((await other.request('/invitations/preview','POST',{token:customerToken,kind:'customer'})).status,404);
+   assert.equal((await other.request('/invitations/customer/accept','POST',{token:customerToken,confirmAccess:true})).status,404);
    assert.equal((await customer.request('/invitations/customer/accept','POST',{token:customerToken,confirmAccess:false})).status,400);
    assert.equal((await customer.request('/invitations/customer/accept','POST',{token:customerToken,confirmAccess:true},{'X-CSRF-Token':''})).status,403);
    assert.equal((await customer.request('/invitations/customer/accept','POST',{token:customerToken,confirmAccess:true})).status,200);

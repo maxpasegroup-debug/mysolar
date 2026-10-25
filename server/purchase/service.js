@@ -1,3 +1,4 @@
+import {requireCustomer} from '../auth/account-type.js';
 import { randomUUID } from 'node:crypto';
 import { transaction,audit } from '../db/pool.js';
 import { lockedUser } from '../auth/sessions.js';
@@ -6,7 +7,7 @@ import { HttpError,badInput } from '../errors.js';
 import { Bindings,areaMatch,paged,publishedProduct,filterCategories } from '../marketplace/service.js';
 export const notFound=()=>new HttpError(404,'NOT_FOUND','This private record was not found.');
 export const conflict=message=>new HttpError(409,'WORKFLOW_CHANGED',message);
-export async function withCustomer(req,permission,work){return transaction(async db=>{const user=await lockedUser(db,req);if(!(await permissionsFor(db,'customer')).includes(permission))throw new HttpError(403,'PERMISSION_DENIED','Customer access is unavailable.');return work(db,user);});}
+export async function withCustomer(req,permission,work){return transaction(async db=>{const user=await lockedUser(db,req);if(permission!=='customer.profile'||(req.originalUrl||'').split('?')[0]!=='/api/reminders/preferences')requireCustomer(user);if(!(await permissionsFor(db,'customer')).includes(permission))throw new HttpError(403,'PERMISSION_DENIED','Customer access is unavailable.');return work(db,user);});}
 export function active(ctx){if(ctx.lifecycle!=='active')throw new HttpError(403,'COMPANY_INACTIVE','Your company must be active to use enquiries and quotations.');}
 export function expect(record,revision){if(record.revision!==revision)throw conflict('This record changed. Refresh before continuing.');}
 export function open(enquiry){if(['closed','cancelled'].includes(enquiry.status))throw conflict('This enquiry is closed or cancelled.');}

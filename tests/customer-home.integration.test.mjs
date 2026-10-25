@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {connectedFixture} from './helpers/connected-fixture.mjs';
 
 test('customer home uses owned history, issued quotations and current permissions',{skip:!process.env.TEST_DATABASE_URL,timeout:120000},async t=>{
- const f=await connectedFixture(t),{db,a,b,customer,stranger,enquiryId,quote}=f;
+ const f=await connectedFixture(t,{strangerAccountType:'customer'}),{db,a,b,customer,stranger,enquiryId,quote}=f;
  const home=async client=>{const r=await client.request('/customer/experience/overview');assert.equal(r.status,200,JSON.stringify(r.data));return r.data;};
  await t.test('unfamiliar customer sees a new state without another customer’s records',async()=>{
   const data=await home(stranger);assert.equal(data.home.state,'new');assert.equal(data.home.enquiry,null);assert.equal(data.sections.length,0);assert.equal(data.unreadCount,0);assert.doesNotMatch(JSON.stringify(data),new RegExp(enquiryId));

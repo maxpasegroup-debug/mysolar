@@ -1,3 +1,4 @@
+import {requireBusiness,requireCustomer} from '../auth/account-type.js';
 import {validateRoleProfile} from '../people-sales.js';
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
@@ -22,7 +23,7 @@ invitations.post('/invitations/preview',async(req,res)=>{
  if(!/^[A-Za-z0-9_-]{43}$/.test(token))throw new HttpError(400,'INVALID_INVITATION','Open a valid invitation link.');
  await limit(req,'invite-preview',req.session.user_id,30,900);
  res.json(await transaction(async db=>{
-  const user=await lockedUser(db,req);
+  const user=await lockedUser(db,req);if(kind==='employee')requireBusiness(user);else requireCustomer(user);
   const table=kind==='customer'?'customer_access_invitations':'company_invitations';
   const result=await db.query(`SELECT c.name AS company_name,i.expires_at,${kind==='customer'?"'customer'::text":"i.role_id"} AS role
     FROM ${table} i JOIN companies c ON c.id=i.company_id
@@ -79,7 +80,7 @@ invitations.post('/invitations/accept',async(req,res)=>{
   if(!/^[A-Za-z0-9_-]{43}$/.test(token))throw new HttpError(400,'INVALID_INVITATION','This invitation cannot be accepted.');
   await limit(req,'invitation-accept',req.session.user_id,15,3600);
   res.json(await transaction(async db=>{
-    const user=await lockedUser(db,req);
+    const user=await lockedUser(db,req);requireBusiness(user);
     const ref=(await db.query('SELECT company_id FROM company_invitations WHERE token_hash=$1',[digest(token)])).rows[0];
     const denied=()=>new HttpError(400,'INVALID_INVITATION','This invitation is expired, unavailable, or belongs to another account.');
     if(!ref)throw denied();

@@ -23,7 +23,7 @@ const PublicHeader = (() => {
   const startButton = (className = '') => `<button type="button" class="ph-start ${className}" data-ph-start aria-haspopup="dialog">Get Started ${icon('arrow')}</button>`;
   function login() {
     const permissions = Account.session.platformPermissions || [];
-    const destination = permissions.includes('platform.companies.read') ? '/platform' : Account.session.companies?.length ? '/companies' : '/customer/dashboard';
+    const destination = permissions.includes('platform.companies.read') ? '/platform' : Account.home||'/customer/dashboard';
     return link(Account.user ? destination : Journey.authPath('/customer/login'), Account.user ? 'My Workspace' : 'Log In', 'ph-login');
   }
   function operatorLinks() {

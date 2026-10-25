@@ -1,3 +1,5 @@
+import nodemailer from 'nodemailer';
+import {mockSignupMail,verifiedRegister} from './helpers/identity.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
@@ -5,12 +7,12 @@ import {isolatedApp} from './helpers/isolated-app.mjs';
 import {staffRoles,permissionsFor} from '../server/permissions.js';
 
 test('complete company onboarding and independent login for every supported staff role', {skip:!process.env.TEST_DATABASE_URL,timeout:180000},async t=>{
- const env=await isolatedApp(t),{db}=env;await env.applyMigrations(db);await env.start();
+ const env=await isolatedApp(t),{db}=env;await env.applyMigrations(db);const messages=mockSignupMail(t,nodemailer);await env.start();
  // Keep the real registration-quota check in one window even across a wall-clock rollover.
  const quotaClock=Date.now();t.mock.method(Date,'now',()=>quotaClock);
  const password=randomBytes(30).toString('base64url'); // Ephemeral test secret, never printed or saved.
  const owner=env.client(),operator=env.client(),actors=[];
- async function register(client,role){await client.session();const r=await client.request('/auth/register','POST',{name:'[LOCAL TEST] '+role,email:role+'@example.invalid',password});assert.equal(r.status,201,JSON.stringify(r.data));await client.session();}
+ async function register(client,role){await client.session();const r=await verifiedRegister(client,{name:'[LOCAL TEST] '+role,email:role+'@example.invalid',password,accountType:role==='customer'?'customer':'business'},db,messages);assert.equal(r.status,201,JSON.stringify(r.data));await client.session();}
  await register(owner,'acceptance-owner');await register(operator,'acceptance-operator');
  // Explicit isolated fixture bootstrap only; company owner receives no platform grant.
  await db.query("INSERT INTO platform_admin_grants(user_id,reason) VALUES($1,'[LOCAL TEST] independent reviewer fixture')",[operator.user.id]);
@@ -70,7 +72,7 @@ test('complete company onboarding and independent login for every supported staf
  await t.test('all roles are associated once; duplicate accounts/memberships and company switching are rejected',async()=>{
   const team=await owner.request('/companies/current/team');assert.equal(team.status,200);assert.deepEqual(team.data.members.map(x=>x.role).sort(),['owner',...staffRoles].sort());
   assert.equal((await db.query('SELECT count(*)::int AS n FROM company_invitations WHERE company_id=$1 AND status=\'accepted\'',[companyId])).rows[0].n,staffRoles.length);
-  const outsider=env.client();await outsider.session();assert.equal((await outsider.request('/auth/register','POST',{name:'[TEST] duplicate',email:'sales@example.invalid',password})).status,409);
+  const outsider=env.client();await outsider.session();assert.equal((await outsider.request('/auth/register','POST',{name:'[TEST] duplicate',email:'sales@example.invalid',password,accountType:'business'})).status,409);
   assert.equal((await owner.request('/companies/current/invitations','POST',{email:'sales@example.invalid',role:'sales',delivery:'share'})).status,409);
   assert.equal((await operator.request('/companies/select','POST',{companyId})).status,403);
   assert.equal((await owner.request('/companies/current/team','GET',undefined,{'X-Company-ID':operator.user.id})).status,409);
@@ -81,6 +83,6 @@ test('complete company onboarding and independent login for every supported staf
  await t.test('owner fresh login retains tenant and ordinary staff cannot read accounting records',async()=>{
   assert.equal((await owner.request('/auth/logout','POST',{})).status,200);await owner.session();assert.equal((await owner.request('/auth/login','POST',{email:'acceptance-owner@example.invalid',password})).status,200);await owner.session();assert.equal(owner.company.id,companyId);assert.equal(owner.company.role,'owner');
   for(const {employee,role} of actors){assert.equal((await employee.request('/companies/current/operations/list/invoices')).status,role==='accounts'?200:403,role);}
-  assert.equal((await owner.request('/auth/recover','POST',{email:owner.user.email})).status,503);assert.equal((await db.query('SELECT count(*)::int AS n FROM password_reset_tokens')).rows[0].n,0);
+  assert.equal((await owner.request('/auth/recover','POST',{email:owner.user.email})).status,202);assert.equal((await db.query('SELECT count(*)::int AS n FROM password_reset_tokens')).rows[0].n,1);
  });
 });

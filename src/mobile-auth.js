@@ -2,8 +2,8 @@
 window.MobileAuth=(()=>{
  let mode=null;
  const e=value=>escapeHTML(value??'');
- const emailMode=()=>mode==='email'||(mode===null&&!Account.session.pinAvailable);
- const switchButton=()=>`<button type="button" class="text-link auth-mode-switch" data-auth-mode="${emailMode()?'mobile':'email'}">${emailMode()?'Use mobile number and PIN':'Use existing email and password'}</button>`;
+ const emailMode=()=>mode!=='mobile';
+ const switchButton=()=>`<button type="button" class="text-link auth-mode-switch" data-auth-mode="${emailMode()?'mobile':'email'}">${emailMode()?'Use existing mobile number and PIN':'Use email and password'}</button>`;
  const mobileField=()=>`<label class="auth-number-label">Mobile number<span class="auth-phone-control"><span class="auth-country" aria-hidden="true">+91</span><input name="mobile" type="tel" required autocomplete="username" inputmode="tel" maxlength="24" placeholder="Mobile number" aria-describedby="auth-mobile-hint"></span><small id="auth-mobile-hint" class="auth-number-hint">Your 10-digit Indian mobile number</small></label>`;
  const pinField=(name='pin',label='Six-digit PIN',fresh=false)=>`<label class="auth-number-label">${e(label)}<span class="auth-pin-control"><span class="auth-pin-cells" aria-hidden="true">${'<span></span>'.repeat(6)}</span><input name="${e(name)}" type="password" required inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="${fresh?'new-password':'current-password'}" aria-describedby="auth-pin-hint"></span><small id="auth-pin-hint" class="auth-number-hint">Enter all six digits. Keep your PIN private.</small></label>`;
  const otpField=()=>Account.field('Code from your email','otp','text','','required inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="one-time-code"');
@@ -63,11 +63,16 @@ window.MobileAuth=(()=>{
   if(modal)f.querySelector('#ob-feedback').textContent=result.message;
   f.querySelector('[name=otp]').focus();
  }
+ function requestEmailConfirmation(f,result){
+  const modal=f.matches('[data-onboarding-form]'),prefix=modal?'ob':'signup';
+  f.innerHTML='<input type="hidden" name="challenge" value="'+e(result.challenge)+'"><label for="'+prefix+'-otp">Code from your email<input id="'+prefix+'-otp" name="otp" required inputmode="numeric" pattern="[0-9]{8}" minlength="8" maxlength="8" autocomplete="one-time-code" aria-describedby="'+prefix+'-otp-error"><small class="ob-field-error" id="'+prefix+'-otp-error"></small></label><p class="fine-print">Code expires in 15 minutes. Your account is created only after verification. Never share this code.</p>'+(modal?'<div id="ob-feedback" class="ob-feedback" role="alert" tabindex="-1"></div><button type="submit" class="ob-submit">Verify email and create account</button><p class="ob-progress" role="status" aria-live="polite"></p>':Account.feedback(result.message)+'<button type="submit" class="btn primary">Verify email and create account</button>')+'<button type="button" class="text-link" data-signup-restart>Change details or request another code</button>';
+  if(modal)f.querySelector('#ob-feedback').textContent=result.message;f.elements.otp.focus();
+ }
  function recovery(){return `<div class="auth-login"><section class="panel settings-panel"><h1>Reset your PIN</h1><p>Enter your sign-in mobile number. We will send a code to its verified recovery email, if eligible.</p>${!Account.session.pinEmailAvailable?'<p class="info-callout">PIN recovery email is not configured. No code will be sent.</p>':''}<form class="pin-form" data-pin-action="reset/request">${mobileField()}${Account.feedback()}<button type="submit" class="btn primary">Send email code</button></form><div class="account-links">${link(Journey.authPath('/customer/login'),'Back to sign in','text-link')}${switchButton()}</div></section></div>`;}
  function security(d){return `<section class="panel settings-panel"><h2>Mobile number and PIN</h2><p>${d.mobile?'Sign-in mobile: '+e(d.mobile):'Add mobile/PIN to this existing account. Your contact phone is not automatically a sign-in identity.'}</p><p class="fine-print">Mobile ownership is not verified by SMS. Use your own number and keep your verified recovery email secure. Your existing password and authenticator remain valid.</p>${!d.pinEmailAvailable?'<p>Mobile/PIN setup requires server configuration and email delivery.</p>':!d.emailVerified?'<p>Verify your account email above before enabling mobile/PIN.</p>':`<form class="pin-form" data-pin-action="enrol/request">${mobileField()}${Account.field('Current password or PIN','credential','password','','required autocomplete="current-password" maxlength="128"')}${Account.field('Authenticator or recovery code, if enabled','code','text','','autocomplete="one-time-code" maxlength="32"')}<p class="account-feedback" role="status" data-pin-feedback></p><button type="submit" class="btn primary">Verify and set up mobile/PIN</button></form>`}</section>`;}
  document.addEventListener('click',event=>{
   const toggle=event.target.closest('[data-auth-mode]');if(toggle){mode=toggle.dataset.authMode;Account.setMessage('');render();return;}
-  const restart=event.target.closest('[data-pin-restart]');if(!restart||restart.disabled)return;
+  const restart=event.target.closest('[data-pin-restart],[data-signup-restart]');if(!restart||restart.disabled)return;
   const f=restart.closest('form');if(f?.matches('[data-onboarding-form]')){Onboarding.open(f.dataset.onboardingForm);return;}
   if(f?.matches('.pin-form'))Account.invalidate();render();
  });
@@ -84,5 +89,5 @@ window.MobileAuth=(()=>{
    }catch(error){const local=f.querySelector('[data-pin-feedback]');if(local)local.textContent=error.message;throw error;}
   },f);
  });
- return {useMobile(){mode='mobile';},cleanupLogin,mountLogin,emailMode,switchButton,login,signupFields,confirmFields,requestConfirmation,recovery,security};
+ return {useEmail(){mode='email';},useMobile(){mode='mobile';},requestEmailConfirmation,cleanupLogin,mountLogin,emailMode,switchButton,login,signupFields,confirmFields,requestConfirmation,recovery,security};
 })();

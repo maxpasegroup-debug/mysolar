@@ -1,3 +1,4 @@
+import {effectiveTypeSQL} from './account-type.js';
 import { config } from '../config.js';
 import { pool, audit } from '../db/pool.js';
 import { digest, randomToken, privateDigest, safeEqual } from './security.js';
@@ -40,7 +41,7 @@ export function setSessionCookie(res, issued) { res.cookie(config.cookieName, is
 export function clearSessionCookie(res) { res.clearCookie(config.cookieName, cookieOptions); }
 // Recheck a session inside the mutation transaction, serializing with password reset and revocation.
 export async function lockedUser(db, req) {
-  const result = await db.query(`SELECT u.id,u.email,u.display_name,u.email_verified_at FROM users u WHERE u.id=$1 AND u.status='active' FOR UPDATE`, [req.session.user_id]);
+  const result = await db.query(`SELECT u.id,u.email,u.display_name,u.email_verified_at,${effectiveTypeSQL('u')} AS account_type FROM users u WHERE u.id=$1 AND u.status='active' FOR UPDATE`, [req.session.user_id]);
   const valid = await db.query(`SELECT token_hash,active_company_id FROM sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>now()
     AND last_seen_at>now()-($3::int * interval '1 hour') FOR UPDATE`,[req.session.token_hash,req.session.user_id,config.idleHours]);
   if (!result.rowCount || !valid.rowCount) throw new HttpError(401,'SIGN_IN_REQUIRED','Please sign in again.');

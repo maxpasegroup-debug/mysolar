@@ -40,7 +40,7 @@ body.lp-active{
 
 .lp-page{--lp-forest:#FFD105;--lp-burgundy:#FFD105}
 .lp-page h2 em,
-.lp-hero.lp-hero-stage .lp-hero-sub em{color:#FFD105}
+.lp-hero.lp-hero-stage .lp-hero-sub em{color:#601c2b}
 .lp-category-tabs button[aria-selected=true],
 .lp-category-tabs button:hover,
 .lp-preview-tabs button[aria-selected=true],

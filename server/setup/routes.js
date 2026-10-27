@@ -1,3 +1,5 @@
+import {deliveryReadiness} from './delivery.js';
+import {setupGuide,choiceDefaults} from './guide.js';
 import { Router } from 'express';
 import { config } from '../config.js';
 import { requireUser,csrf } from '../auth/sessions.js';
@@ -27,6 +29,21 @@ setup.patch('/team/:id/details',async(req,res)=>{
  }));
 });
 setup.get('/setup',async(req,res)=>res.json(await withCompany(req,'company.setup.read',async(db,ctx)=>({...(await setupData(db,ctx.companyId,{team:true})),logoHosts:config.logoHosts,defaults:brandDefaults}))));
+setup.get('/setup/delivery',async(req,res)=>res.json(await withCompany(req,'company.setup.read',(db,ctx)=>deliveryReadiness(db,ctx))));
+setup.get('/setup/guide',async(req,res)=>res.json(await withCompany(req,'company.setup.read',async(db,ctx)=>{const data=await setupData(db,ctx.companyId);return {company:data.company,guide:await setupGuide(db,ctx,data)};})));
+setup.put('/setup/decisions',async(req,res)=>{
+ v.body(req.body,['revision','offers','team','opening','communicationsReviewed','reason']);
+ const d={revision:input.revision(req.body.revision),offers:v.choice(req.body.offers,['undecided','use_offers','not_needed','later'],'offer setup'),team:v.choice(req.body.team,['undecided','invite_team','solo','later'],'team setup'),opening:v.choice(req.body.opening,['undecided','start_fresh','reviewed','later'],'opening records'),communications:input.bool(req.body.communicationsReviewed),reason:input.plain(req.body.reason,'review reason',300,10)};
+ res.json(await withCompany(req,'company.onboarding.manage',async(db,ctx)=>{
+  const company=(await db.query('SELECT revision,lifecycle FROM companies WHERE id=$1',[ctx.companyId])).rows[0];expectRevision(company,d.revision);if(company.lifecycle==='suspended')throw new HttpError(403,'COMPANY_SUSPENDED','Setup changes are unavailable while suspended.');
+  const previous=(await db.query('SELECT offers_mode,team_mode,opening_mode,communications_reviewed FROM company_setup_choices WHERE company_id=$1',[ctx.companyId])).rows[0]||choiceDefaults;
+  const next={offers_mode:d.offers,team_mode:d.team,opening_mode:d.opening,communications_reviewed:d.communications};
+  await db.query('INSERT INTO company_setup_choices(company_id,offers_mode,team_mode,opening_mode,communications_reviewed,updated_by) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(company_id) DO UPDATE SET offers_mode=excluded.offers_mode,team_mode=excluded.team_mode,opening_mode=excluded.opening_mode,communications_reviewed=excluded.communications_reviewed,updated_by=excluded.updated_by,updated_at=now()',[ctx.companyId,d.offers,d.team,d.opening,d.communications,ctx.userId]);
+  await db.query('UPDATE companies SET revision=revision+1,updated_at=now() WHERE id=$1',[ctx.companyId]);
+  await audit(db,{actor:ctx.userId,company:ctx.companyId,action:'company.setup_choices_reviewed',target:ctx.companyId,metadata:{previous,next,reason:d.reason}});
+  return {message:'Setup choices saved. No records imported, messages sent, financial entries posted or publication status changed.'};
+ }));
+});
 setup.get('/team',async(req,res)=>res.json(await withCompany(req,'company.setup.read',async(db,ctx)=>{
   if(!ctx.permissions.includes('members.read'))throw new HttpError(403,'PERMISSION_DENIED','Team access is not allowed.');
   const members=await db.query('SELECT m.id,m.user_id,u.display_name AS name,u.email,m.role_id AS role,m.status,m.staff_details,m.staff_revision FROM company_memberships m JOIN users u ON u.id=m.user_id WHERE m.company_id=$1 ORDER BY m.created_at',[ctx.companyId]);
@@ -49,8 +66,13 @@ async function saveStep(req,res,parse,save,step,permission='company.onboarding.m
   }));
 }
 setup.put('/onboarding/profile',async(req,res)=>saveStep(req,res,input.profile,async(db,ctx,d)=>{
+  const previous=(await db.query('SELECT business_type,business_preset FROM company_profiles WHERE company_id=$1',[ctx.companyId])).rows[0];
+  // A cached legacy form has no preset field. Keep the saved preset when its
+  // classification is unchanged; an explicit new selection remains authoritative.
+  if(!Object.hasOwn(req.body,'businessPreset')&&previous.business_type===d.businessType&&previous.business_preset)d.businessPreset=previous.business_preset;
+  await audit(db,{actor:ctx.userId,company:ctx.companyId,action:'company.business_preset_saved',target:ctx.companyId,metadata:{previous,next:{business_type:d.businessType,business_preset:d.businessPreset}}});
   await db.query('UPDATE companies SET name=$1,city=$2,business_email=$3,phone=$4 WHERE id=$5',[d.displayName,d.district,d.email,d.phone,ctx.companyId]);
-  await db.query('UPDATE company_profiles SET legal_name=$1,business_type=$2,primary_contact=$3,address=$4,state=$5,district=$6,pin_code=$7,language=$8,website=$9,updated_at=now() WHERE company_id=$10',[d.legalName,d.businessType,d.contactPerson,d.address,d.state,d.district,d.pin,d.language,d.website,ctx.companyId]);
+  await db.query('UPDATE company_profiles SET legal_name=$1,business_type=$2,primary_contact=$3,address=$4,state=$5,district=$6,pin_code=$7,language=$8,website=$9,business_preset=$11,updated_at=now() WHERE company_id=$10',[d.legalName,d.businessType,d.contactPerson,d.address,d.state,d.district,d.pin,d.language,d.website,ctx.companyId,d.businessPreset]);
 },'profile'));
 setup.put('/branding',async(req,res)=>saveStep(req,res,input.brand,async(db,ctx,d)=>{
   await db.query('UPDATE company_branding SET public_name=$1,logo_url=$2,primary_color=$3,secondary_color=$4,accent_color=$5,welcome_text=$6,public_email=$7,public_phone=$8,description=$9,appearance=$10,requested_domain=$11,updated_at=now() WHERE company_id=$12',[d.publicName,d.logoUrl,d.primary,d.secondary,d.accent,d.welcome,d.email,d.phone,d.description,d.appearance,d.requestedDomain,ctx.companyId]);

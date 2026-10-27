@@ -58,7 +58,7 @@ export async function customer360(db,ctx,contact,page=1){
  result.files=await c.paged(db,'f.id,f.record_kind,f.record_id,f.filename,f.mime,f.size,f.created_at','FROM managed_files f',`f.company_id=${companyParam} AND f.deleted_at IS NULL AND f.scan_status='clean' AND EXISTS(SELECT 1 FROM (${sets.join(' UNION ALL ')}) visible WHERE kind=f.record_kind AND id=f.record_id)`,b,page,'f.created_at DESC,f.id');
  if(c.has(ctx,'quotations.read')){
   const qb=new c.Bindings(),cp=qb.add(company),customer=qb.add(contact.user_id),cid=qb.add(id);
-  result.quotations=await c.paged(db,'q.id,q.enquiry_id,q.reference,q.version,q.status,q.total_paise,q.valid_until','FROM quotation_versions q JOIN customer_enquiries e ON e.id=q.enquiry_id',`q.company_id=${cp} AND (e.customer_id=${customer} OR EXISTS(SELECT 1 FROM business_orders o WHERE o.company_id=${cp} AND o.contact_id=${cid} AND o.quotation_id=q.id) OR EXISTS(SELECT 1 FROM crm_leads l WHERE l.company_id=${cp} AND l.contact_id=${cid} AND l.enquiry_id=q.enquiry_id))`,qb,page,'q.created_at DESC,q.id');
+  result.quotations=await c.paged(db,'q.id,q.enquiry_id,q.reference,q.version,q.status,q.total_paise,q.valid_until','FROM quotation_versions q LEFT JOIN customer_enquiries e ON e.id=q.enquiry_id',`q.company_id=${cp} AND (q.manual_contact_id=${cid} OR e.customer_id=${customer} OR EXISTS(SELECT 1 FROM business_orders o WHERE o.company_id=${cp} AND o.contact_id=${cid} AND o.quotation_id=q.id) OR EXISTS(SELECT 1 FROM crm_leads l WHERE l.company_id=${cp} AND l.contact_id=${cid} AND l.enquiry_id=q.enquiry_id))`,qb,page,'q.created_at DESC,q.id');
  }
  if(allowed.invoices){
   const pb=new c.Bindings();

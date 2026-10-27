@@ -1,6 +1,7 @@
+import {financeExports} from './finance-export.js';
 import * as c from './core.js';
 import {invoiceBalance,orderFinance,financeSummary,projectCosts,companyFinance} from './finance-ledger.js';
-export const financialPosting=c.router();
+export const financialPosting=c.router();financialPosting.use(financeExports);
 const positive=value=>{const n=c.decimal(value,2,'amount');if(n<=0n)throw c.badInput('Record a positive amount.');return n;};
 async function pastDate(db,value){const day=c.date(value);if(!(await db.query("SELECT 1 WHERE $1::date<=(now() AT TIME ZONE 'Asia/Kolkata')::date",[day])).rowCount)throw c.badInput('Do not record a future transaction as posted.');return day;}
 const confirm=d=>{if(d.confirmRecord!==true)throw c.badInput('Confirm that this is an actual record. This does not send or receive money.');};

@@ -39,9 +39,9 @@ export async function eligibleRecipients(db,data){
  const rows=(await db.query(`SELECT v.id,v.name,v.city FROM marketplace_vendors v WHERE ${where.join(' AND ')} ORDER BY v.id`,b.values)).rows;
  if(rows.length!==data.companyIds.length)throw conflict('A selected distributor is no longer eligible for this request and location. Review recipients again.');return rows;
 }
-export async function event(db,{enquiryId,companyId=null,actor,action,versionId=null,customerVisible=true}){
+export async function event(db,{enquiryId,companyId=null,actor,action,versionId=null,customerVisible=true,metadata={}}){
  await db.query('INSERT INTO enquiry_events(enquiry_id,company_id,actor_id,action,version_id,customer_visible) VALUES($1,$2,$3,$4,$5,$6)',[enquiryId,companyId,actor,action,versionId,customerVisible]);
- await audit(db,{actor,company:companyId,action:'purchase.'+action,target:enquiryId,metadata:{versionId}});
+ await audit(db,{actor,company:companyId,action:'purchase.'+action,target:enquiryId,metadata:{...metadata,versionId}});
 }
 export async function notify(db,enquiry,message,{companyId=null,versionId=null}={}){
  if(companyId){await db.query(`INSERT INTO workflow_notifications(id,user_id,company_id,enquiry_id,version_id,message)
@@ -52,12 +52,12 @@ export async function notify(db,enquiry,message,{companyId=null,versionId=null}=
 export const effective=(alias='q')=>`CASE WHEN ${alias}.status='sent' AND ${alias}.valid_until<(now() AT TIME ZONE 'Asia/Kolkata')::date THEN 'expired' WHEN ${alias}.status='sent' AND e.preferred_version_id=${alias}.id THEN 'preferred' WHEN ${alias}.status='sent' AND ${alias}.request_type<>'' THEN ${alias}.request_type||'_requested' WHEN ${alias}.status='sent' AND ${alias}.viewed_at IS NOT NULL THEN 'viewed' ELSE ${alias}.status END`;
 export async function quoteRecord(db,id,{user=null,ctx=null,lock=false}={}){
  const scope=user?'e.customer_id=$2 AND q.status<>\'draft\'':'q.company_id=$2';
- const row=(await db.query(`SELECT q.*,${effective()} AS effective_status,e.preferred_version_id,e.status AS enquiry_status,e.revision AS enquiry_revision FROM quotation_versions q JOIN customer_enquiries e ON e.id=q.enquiry_id WHERE q.id=$1 AND ${scope} ${lock?'FOR UPDATE OF q':''}`,[id,user?user.id:ctx.companyId])).rows[0];if(!row)throw notFound();if(ctx){const {preferred_version_id,...safe}=row;return {...safe,has_preference:Boolean(preferred_version_id),is_preferred:preferred_version_id===row.id};}return customerQuote(row);
+ const row=(await db.query(`SELECT q.*,${effective()} AS effective_status,e.preferred_version_id,e.status AS enquiry_status,e.revision AS enquiry_revision FROM quotation_versions q LEFT JOIN customer_enquiries e ON e.id=q.enquiry_id WHERE q.id=$1 AND ${scope} ${lock?'FOR UPDATE OF q':''}`,[id,user?user.id:ctx.companyId])).rows[0];if(!row)throw notFound();if(ctx){const {preferred_version_id,...safe}=row;return {...safe,has_preference:Boolean(preferred_version_id),is_preferred:preferred_version_id===row.id};}return customerQuote(row);
 }
-export async function items(db,id){return (await db.query('SELECT product_id,description,brand,model,specifications,quantity,unit,unit_price_paise,discount_paise,tax_rate,amounts FROM quotation_line_items WHERE version_id=$1 ORDER BY position',[id])).rows;}
+export async function items(db,id){return (await db.query('SELECT product_id,offer_id,offer_revision,product_snapshot,offer_snapshot,description,brand,model,specifications,quantity,unit,unit_price_paise,discount_paise,tax_rate,amounts FROM quotation_line_items WHERE version_id=$1 ORDER BY position',[id])).rows;}
 export function customerEnquiry(e){const {contact_snapshot,customer_id,submission_key,...safe}=e;return safe;}
 export function companyEnquiry(e){const {customer_id,submission_key,offer_id,preferred_version_id,...safe}=e;return {...safe,has_preference:Boolean(preferred_version_id)};}
-export function customerQuote(q){const {created_by,review_status,approval_revision,reviewed_policy_revision,reviewer_id,approval_override,...safe}=q;return safe;}
+export function customerQuote(q){const {source_lead_id,created_by,review_status,approval_revision,reviewed_policy_revision,reviewer_id,approval_override,...safe}=q;return safe;}
 export async function details(db,enquiry,{ctx=null,page=1}={}){
  const b=new Bindings(),terms=[`x.enquiry_id=${b.add(enquiry.id)}`];if(ctx)terms.push(`(x.company_id=${b.add(ctx.companyId)} OR x.company_id IS NULL)`);else terms.push('x.customer_visible');
  const history=await paged(db,'x.action,x.company_id,x.version_id,x.created_at','FROM enquiry_events x',terms.join(' AND '),b,page,'x.id DESC');
@@ -65,7 +65,7 @@ export async function details(db,enquiry,{ctx=null,page=1}={}){
  const mb=new Bindings(),mw=[`x.enquiry_id=${mb.add(enquiry.id)}`];if(ctx)mw.push(`x.company_id=${mb.add(ctx.companyId)}`);
  const messages=await paged(db,'x.id,x.company_id,x.version_id,x.author_side,x.kind,x.body,x.created_at','FROM enquiry_messages x',mw.join(' AND '),mb,page,'x.created_at DESC,x.id');
  const qb=new Bindings(),qw=[`q.enquiry_id=${qb.add(enquiry.id)}`];if(ctx)qw.push(`q.company_id=${qb.add(ctx.companyId)}`);else qw.push("q.status<>'draft'");
- const quotations=await paged(db,`q.id,q.enquiry_id,q.company_id,q.reference,q.version,q.total_paise,q.currency,q.valid_until,q.issuer_snapshot,q.estimated,q.tax_mode,${effective()} AS effective_status`,'FROM quotation_versions q JOIN customer_enquiries e ON e.id=q.enquiry_id',qw.join(' AND '),qb,page,'q.created_at DESC,q.id');
+ const quotations=await paged(db,`q.id,q.enquiry_id,q.company_id,q.reference,q.version,q.total_paise,q.currency,q.valid_until,q.issuer_snapshot,q.estimated,q.tax_mode,${effective()} AS effective_status`,'FROM quotation_versions q LEFT JOIN customer_enquiries e ON e.id=q.enquiry_id',qw.join(' AND '),qb,page,'q.created_at DESC,q.id');
  const result={enquiry:ctx?companyEnquiry(enquiry):customerEnquiry(enquiry),recipients,history,messages,quotations};
  if(ctx){const nb=new Bindings();result.notes=await paged(db,'x.id,x.body,x.created_at','FROM enquiry_internal_notes x',`x.enquiry_id=${nb.add(enquiry.id)} AND x.company_id=${nb.add(ctx.companyId)}`,nb,page,'x.created_at DESC,x.id');result.permissions=ctx.permissions;}
  return result;
@@ -78,7 +78,7 @@ export async function listEnquiries(db,q,{user=null,ctx=null}={}){
  if(q.from)where.push(`e.created_at>=${b.add(q.from)}::date`);if(q.to)where.push(`e.created_at<${b.add(q.to)}::date+interval '1 day'`);
  return {...await paged(db,`e.id,e.title,e.requested_item,e.status,e.state,e.district,e.pin,e.category_id,e.created_at,e.revision${ctx?',r.viewed_at':''}`,user?'FROM customer_enquiries e':'FROM customer_enquiries e JOIN enquiry_recipients r ON r.enquiry_id=e.id',where.join(' AND '),b,q.page,'e.created_at DESC,e.id'),categories:await filterCategories(db)};
 }
-export async function quoteList(db,q,{user=null,ctx=null}={}){const b=new Bindings(),where=[user?`e.customer_id=${b.add(user.id)} AND q.status<>'draft'`:`q.company_id=${b.add(ctx.companyId)}`];if(q.status==='review_pending'&&ctx)where.push("q.status='draft' AND q.review_status='pending'");else if(q.status==='preferred'&&user)where.push('e.preferred_version_id=q.id');else if(q.status)where.push(`(${effective()})=${b.add(q.status)}`);if(q.search)where.push(`q.reference ILIKE '%'||${b.add(q.search)}||'%'`);return paged(db,`${ctx?'q.review_status,q.revision,':''}q.id,q.enquiry_id,q.reference,q.version,q.company_id,q.issuer_snapshot,q.total_paise,q.currency,q.valid_until,q.estimated,q.tax_mode,e.title,${effective()} AS effective_status`,'FROM quotation_versions q JOIN customer_enquiries e ON e.id=q.enquiry_id',where.join(' AND '),b,q.page,'q.created_at DESC,q.id');}
+export async function quoteList(db,q,{user=null,ctx=null}={}){const b=new Bindings(),where=[user?`e.customer_id=${b.add(user.id)} AND q.status<>'draft'`:`q.company_id=${b.add(ctx.companyId)}`];if(q.status==='review_pending'&&ctx)where.push("q.status='draft' AND q.review_status='pending'");else if(q.status==='preferred'&&user)where.push('e.preferred_version_id=q.id');else if(q.status)where.push(`(${effective()})=${b.add(q.status)}`);if(q.search)where.push(`q.reference ILIKE '%'||${b.add(q.search)}||'%'`);return paged(db,`${ctx?'q.review_status,q.revision,':''}q.id,q.enquiry_id,${ctx?'q.manual_contact_id,':''}${ctx?.permissions.includes('crm.read')?'q.source_lead_id,':''}q.reference,q.version,q.company_id,q.issuer_snapshot,q.total_paise,q.currency,q.valid_until,q.estimated,q.tax_mode,e.title,${effective()} AS effective_status`,'FROM quotation_versions q LEFT JOIN customer_enquiries e ON e.id=q.enquiry_id',where.join(' AND '),b,q.page,'q.created_at DESC,q.id');}
 export async function sendMessage(db,enquiry,{companyId,actor,side,kind,body,versionId=null}){
  if(!(await db.query('SELECT 1 FROM enquiry_recipients WHERE enquiry_id=$1 AND company_id=$2',[enquiry.id,companyId])).rowCount)throw notFound();
  if(versionId){const q=(await db.query("SELECT id FROM quotation_versions WHERE id=$1 AND enquiry_id=$2 AND company_id=$3 AND status<>'draft'",[versionId,enquiry.id,companyId])).rows[0];if(!q)throw notFound();}

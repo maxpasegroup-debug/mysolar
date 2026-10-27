@@ -46,7 +46,7 @@ test('company people and sales controls enforce profiles, hierarchy, pipeline an
   ok(await a.request(ops+'/leads/'+lead+'/qualification','POST',{revision:r.revision,qualification:{requirement:'[TEST] rooftop solar',siteAddress:'[TEST] site address',capacity:'Unconfirmed',budget:'Unconfirmed',timeframe:'',notes:''},lostReason:''}));ok(await update('qualified'));
   assert.equal(ok(await a.request(ops+'/list/leads?status=qualified')).total,1);
   assert.equal((await update('lost')).status,409);ok(await update('lost','[TEST] customer postponed'));assert.equal(ok(await a.request(ops+'/record/leads/'+lead)).record.lost_reason,'[TEST] customer postponed');
-  const policy=(await controls()).policy,bad=structuredClone(policy.pipeline);bad.splice(bad.findIndex(x=>x.code==='site_visit'),1);assert.equal((await a.request(root+'/controls/policy','POST',policyPayload(policy,{pipeline:bad}))).status,400);
+  const policy=(await controls()).policy,bad=structuredClone(policy.pipeline);bad.splice(bad.findIndex(x=>x.code==='site_visit'),1);assert.equal((await a.request(root+'/controls/policy','POST',policyPayload(policy,{pipeline:bad}))).status,400);ok(await update('new'));
  });
  await t.test('customer search and duplicate review handle phone, email and address without cross-tenant matches',async()=>{
   ok(await a.request(ops+'/contacts/'+contact+'/update','POST',{revision:1,kind:'individual',name:'[TEST] Athira fixture',email:'phase2-contact@example.invalid',phone:'+918123456789',billingAddress:'[TEST] billing',serviceAddress:'[TEST] Rural village'}));

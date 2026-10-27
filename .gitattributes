@@ -1,0 +1,2 @@
+# Migration checksums are byte-sensitive; keep SQL identical on Windows/Linux.
+server/db/migrations/*.sql text eol=lf

@@ -1,7 +1,9 @@
+import {growth} from './growth.js';
+import {credit} from './credit.js';
 import * as c from './core.js';
 import { receivedEnquiry } from '../purchase/service.js';
 import {salesPolicy} from '../people-sales.js';
-export const crm=c.router();
+export const crm=c.router();crm.use(credit);crm.use(growth);
 export async function duplicateContacts(db,ctx,{email='',phone='',name='',excludeId=null}){
  const digits=phone.replace(/\D/g,'');return (await db.query(`SELECT id,name,email,phone FROM company_contacts WHERE company_id=$1 AND ($2::uuid IS NULL OR id<>$2) AND (($3<>'' AND lower(email)=lower($3)) OR ($4<>'' AND (phone=$4 OR length($4)>=10 AND right(regexp_replace(phone,'[^0-9]','','g'),10)=right($4,10))) OR ($5<>'' AND lower(name)=lower($5))) ORDER BY name,id LIMIT 20`,[ctx.companyId,excludeId,email,digits,name])).rows;
 }

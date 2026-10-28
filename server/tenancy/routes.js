@@ -1,3 +1,6 @@
+import {prepareCompanyCreation} from './company-creation.js';
+import {companyLocation} from '../setup/location.js';
+import {resolveBusinessPreset} from '../setup/presets.js';
 import {requireBusiness} from '../auth/account-type.js';
 import {requireNoOutstandingWork,ensureWorkPermissions} from '../operations/work-handoffs.js';
 import {validateRoleProfile} from '../people-sales.js';
@@ -20,20 +23,28 @@ companies.use((req,res,next)=>['GET','HEAD'].includes(req.method)?next():csrf(re
 const companyFields='id,name,city,business_email,phone,storefront_description,storefront_published';
 companies.post('/',async(req,res)=>{
   await limit(req,'company-create',req.session.user_id,5,86400);
-  const input=v.body(req.body,['name','city','email','phone','businessType'],['name','city','email','phone']);
-  const businessType=input.businessType===undefined?'distributor':v.choice(input.businessType,['distributor','installer','both'],'business type');
+  const input=v.body(req.body,['name','city','email','phone','businessType','businessPreset','countryCode','state','district','operationKey'],['name','city','email','phone']);
+  const location=companyLocation(input);
+  const {businessType,businessPreset}=resolveBusinessPreset(input.businessType,input.businessPreset);
   const name=v.text(input.name,'company name'),city=v.text(input.city,'city'),email=v.email(input.email),phone=v.phone(input.phone);
-  const company=await transaction(async db=>{
-    const user=await lockedUser(db,req);requireBusiness(user);const id=randomUUID();
+  const result=await transaction(async db=>{
+    const user=await lockedUser(db,req);requireBusiness(user);
+    const creation=await prepareCompanyCreation(db,user.id,input.operationKey,{name,city,email,phone,businessType,businessPreset,state:location?.state||'',district:location?.district||''}),id=creation.id;
+    if(creation.replayed){
+      const company=(await db.query(`SELECT ${companyFields} FROM companies WHERE id=$1`,[id])).rows[0];
+      await db.query('UPDATE sessions SET active_company_id=$1 WHERE token_hash=$2',[id,req.session.token_hash]);
+      return {company,replayed:true};
+    }
     const result=await db.query(`INSERT INTO companies(id,name,city,business_email,phone,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING ${companyFields}`,[id,name,city,email,phone,user.id]);
-    await db.query('UPDATE company_profiles SET business_type=$1 WHERE company_id=$2',[businessType,id]);
+    await db.query('UPDATE company_profiles SET business_type=$1,business_preset=$3 WHERE company_id=$2',[businessType,id,businessPreset]);
+    if(location)await db.query('UPDATE company_profiles SET state=$1,district=$2 WHERE company_id=$3',[location.state,location.district,id]);
     // Ownership is granted only by this atomic, server-controlled creation path.
     await db.query("INSERT INTO company_memberships(id,company_id,user_id,role_id) VALUES($1,$2,$3,'owner')",[randomUUID(),id,user.id]);
     await db.query('UPDATE sessions SET active_company_id=$1 WHERE token_hash=$2',[id,req.session.token_hash]);
-    await audit(db,{actor:user.id,company:id,action:'company.created',target:id});
-    return result.rows[0];
+    await audit(db,{actor:user.id,company:id,action:'company.created',target:id,metadata:{businessType,businessPreset,creationFingerprint:creation.fingerprint}});
+    return {company:result.rows[0],replayed:false};
   });
-  res.status(201).json({company});
+  res.status(result.replayed?200:201).json(result);
 });
 companies.post('/select',async(req,res)=>{
   const input=v.body(req.body,['companyId']);const id=v.uuid(input.companyId);

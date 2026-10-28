@@ -25,9 +25,9 @@ async function sessionView(req) {
   if (!req.session.user_id) return { user:null, companies:[], activeCompany:null, permissions:[], platformPermissions:[], pinAvailable:pinAvailable(),pinEmailAvailable:pinEmailAvailable(),recoveryAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey), csrfToken:csrfToken(req.sessionToken) };
   return transaction(async db => {
     const user = await lockedUser(db,req);
-    const memberships = await db.query(`SELECT c.id,c.name,c.city,c.status,c.lifecycle,m.role_id AS role,coalesce(p.name,r.label) AS role_label,
+    const memberships = await db.query(`SELECT c.id,c.name,c.city,c.status,c.lifecycle,cp.business_type,cp.business_preset,m.role_id AS role,coalesce(p.name,r.label) AS role_label,
       json_build_object('public_name',b.public_name,'logo_url',b.logo_url,'primary_color',b.primary_color,'secondary_color',b.secondary_color,'accent_color',b.accent_color) AS brand
-      FROM company_memberships m JOIN companies c ON c.id=m.company_id JOIN roles r ON r.id=m.role_id LEFT JOIN company_role_profiles p ON p.id=m.role_profile_id AND p.company_id=m.company_id LEFT JOIN company_branding b ON b.company_id=c.id
+      FROM company_memberships m JOIN companies c ON c.id=m.company_id JOIN roles r ON r.id=m.role_id LEFT JOIN company_profiles cp ON cp.company_id=c.id LEFT JOIN company_role_profiles p ON p.id=m.role_profile_id AND p.company_id=m.company_id LEFT JOIN company_branding b ON b.company_id=c.id
       WHERE m.user_id=$1 AND m.status='active' AND (c.status='active' OR m.role_id='owner') ORDER BY c.name,c.id`,[user.id]);
     const activeCompany = memberships.rows.find(row => row.id === user.active_company_id) || null;
     if (!activeCompany && user.active_company_id) await db.query('UPDATE sessions SET active_company_id=NULL WHERE token_hash=$1',[req.session.token_hash]);

@@ -619,6 +619,22 @@ try{
   check('launch checklist never claims external acceptance at '+width+'px',await evaluate('document.querySelector("main").textContent.includes("pilot acceptance required") && !document.querySelector("main input[readonly]") && document.documentElement.scrollWidth<=innerWidth+2'));
   if(width===390||width===1440)await writeFile(resolve(output,'solar-os-delivery-'+width+'.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
  }
+ for(const mode of ['account-business','setup']){
+  growthFixture=mode;await evaluate('(async()=>{await Account.refresh();await Account.refresh();})()');
+  for(const width of [360,390,768,1024,1280,1440]){
+   await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<768});
+   // Changing viewport on the same hash intentionally preserves entered values.
+   // Open a fresh form before checking defaults at each width.
+   await navigate('/');await navigate(mode==='setup'?'/distributor/setup?step=profile':'/distributor/onboarding');await wait('!!document.querySelector("[data-company-location]")');
+   check('company country defaults to India and district waits for state '+mode+' '+width,await evaluate('document.querySelector("[name=countryCode]").value==="IN" && document.querySelector("[name=state]").options.length===37 && document.querySelector("[name=district]").disabled && document.documentElement.scrollWidth<=innerWidth+2'));
+   await evaluate('(()=>{const s=document.querySelector("[data-company-location] [name=state]");s.value="Kerala";s.dispatchEvent(new Event("change",{bubbles:true}));})()');
+   check('Kerala provides Kozhikode and 14 district options '+mode+' '+width,await evaluate('document.querySelector("[name=district]").options.length===16 && [...document.querySelector("[name=district]").options].some(o=>o.value==="Kozhikode") && !document.querySelector("[name=district]").disabled'));
+   await evaluate('(()=>{const d=document.querySelector("[name=district]");d.value="__other__";d.dispatchEvent(new Event("change",{bubbles:true}));})()');
+   check('unlisted district supports accessible manual entry '+mode+' '+width,await evaluate('document.activeElement.name==="districtOther" && document.activeElement.required && !document.activeElement.disabled'));
+   await evaluate('(()=>{const s=document.querySelector("[data-company-location] [name=state]");s.value="Tamil Nadu";s.dispatchEvent(new Event("change",{bubbles:true}));})()');
+   check('state change clears stale district '+mode+' '+width,await evaluate('document.querySelector("[name=district]").value==="" && [...document.querySelector("[name=district]").options].some(o=>o.value==="Chennai") && ![...document.querySelector("[name=district]").options].some(o=>o.value==="Kozhikode") && document.querySelector("[name=districtOther]").disabled'));
+  }
+ }
  growthFixture=null;await send('Fetch.disable');
  // Page-level CDP network emulation does not disable the worker's own network target.
  // Stop this isolated test server as well, so the worker observes a real connection failure.

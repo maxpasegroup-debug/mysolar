@@ -15,6 +15,13 @@ let lastPeoplePayload=null;let holdFundingFiles=false,heldFundingFiles=null;
 let ws,growthFixture=null,privatePrintContext=false,holdMarketplaceContext=false,heldMarketplaceContext=null,holdMarketplaceProducts=false,heldMarketplaceProducts=null;
 const fixtureUser='20000000-0000-4000-8000-000000000001',fixtureCompany='10000000-0000-4000-8000-000000000001',fixtureStaff='20000000-0000-4000-8000-000000000002';
 function growthData(path){
+ if(growthFixture==='master-notifications'){
+  const company={id:fixtureCompany,name:'[LOCAL FIXTURE] Manual sales',role:'sales',role_label:'Sales',status:'active',lifecycle:'active',brand:{}};
+  if(path==='/api/auth/session')return {user:{id:fixtureUser,name:'[LOCAL FIXTURE] Sales employee',accountType:'business'},companies:[company],activeCompany:company,permissions:['workspace.read','crm.read','quotations.read'],customerPermissions:[],platformPermissions:[],csrfToken:'fixture-only'};
+  if(path==='/api/companies/current/operations/notifications')return {items:[{id:fixtureStaff,source:'workflow',record_type:'enquiries',record_id:null,enquiry_id:null,version_id:fixtureCompany,message:'[LOCAL FIXTURE] Manual quotation follow-up',read_at:null,created_at:'2026-10-28T04:00:00Z'}],unread:1,total:1,page:1,pageSize:20};
+  return null;
+ }
+
  if(growthFixture==='final-os'){
   const company={id:fixtureCompany,name:'[LOCAL FIXTURE] Solar OS',role:'owner',role_label:'Owner',status:'active',lifecycle:'active',business_type:'both',business_preset:'both',brand:{}},permissions=['workspace.read','company.read','company.setup.read','company.onboarding.manage','customers.read','customers.manage','crm.read','crm.manage','quotations.read','quotations.manage','quotations.send','orders.read','orders.manage','orders.confirm','inventory.read','inventory.manage','finance.read','finance.manage','tasks.own'];const page=items=>({items,total:items.length,page:1,pageSize:20});
   if(path==='/api/auth/session')return {user:{id:fixtureUser,name:'[LOCAL FIXTURE] Owner'},companies:[company],activeCompany:company,permissions,customerPermissions:[],platformPermissions:[],csrfToken:'fixture-only'};
@@ -178,9 +185,9 @@ function growthData(path){
  }
  if(['owner-today','employee-today','setup'].includes(growthFixture)){
   const employee=growthFixture==='employee-today',setup=growthFixture==='setup',company={id:fixtureCompany,name:'[LOCAL FIXTURE] Solar company',role:employee?'field_engineer':'owner',role_label:employee?'Field engineer':'Owner',status:'active',lifecycle:setup?'onboarding':'active',brand:{}};
-  const permissions=employee?['workspace.read','tasks.own','projects.assigned']:['workspace.read','company.read','company.setup.read','company.onboarding.manage','customers.read','customers.manage','crm.read','crm.manage','quotations.read','quotations.manage','members.read','invitations.manage','tasks.own','finance.read'];
+  const permissions=employee?['workspace.read','tasks.own','projects.assigned']:['workspace.read','company.read','company.setup.read','company.onboarding.manage','customers.read','customers.manage','crm.read','crm.manage','leads.read','quotations.read','quotations.manage','members.read','invitations.manage','tasks.own','tasks.manage','finance.read','finance.manage','orders.read','orders.manage','inventory.read','procurement.read','procurement.manage','automation.read'];
   if(path==='/api/auth/session')return {user:{id:fixtureUser,name:'[LOCAL FIXTURE] User',email:'user@example.invalid'},companies:[company],activeCompany:company,permissions,customerPermissions:[],platformPermissions:[],csrfToken:'fixture-only',recoveryAvailable:false};
-  if(path==='/api/companies/current/operations/dashboard')return {cards:[{kind:'tasks',label:'Assigned tasks',value:0}],events:[],priorities:[],outstanding:employee?null:'0',asOf:new Date().toISOString(),scope:'Fictional browser fixture; database behavior tested separately.',gettingStarted:employee?{}:{customers:0,leads:0,quotations:0,employees:0}};
+  if(path==='/api/companies/current/operations/dashboard')return {boss:employee?null:{sales:{current:'120000',previous:'90000',periods:{current:{from:'2026-10-01',to:'2026-10-28'},previous:{from:'2026-09-01',to:'2026-09-30'}}},activeQuotations:2,team:{activeEmployees:3,overdueTasks:1}},cards:[{kind:'tasks',label:'Assigned tasks',value:0},{kind:'orders',label:'Confirmed orders',value:2}],events:[],priorities:[],outstanding:employee?null:'0',asOf:new Date().toISOString(),scope:'Fictional browser fixture; database behavior tested separately.',gettingStarted:employee?{}:{customers:0,leads:0,quotations:0,employees:0}};
   if(path==='/api/companies/current/setup/guide')return {company:{...company,revision:1,marketplace_status:'not_requested',storefront_published:false},guide:{completed:0,total:7,canManage:true,choices:{offers_mode:'undecided',team_mode:'undecided',opening_mode:'undecided',communications_reviewed:false},counts:{},communications:{emailConfigured:false,invitationMode:'email'},notice:'[LOCAL FIXTURE] Saved progress only; not activation or publication.',steps:[['company','Company details','/distributor/setup?step=profile'],['identity','Public identity','/distributor/setup?step=brand'],['coverage','Services & coverage','/distributor/setup?step=business'],['offers','Catalogue & your offers','/distributor/offers'],['team','Team access','/distributor/team'],['opening','Opening records','/distributor/setup?step=guide'],['communications','Communication settings','/distributor/setup?step=guide']].map(([id,title,url])=>({id,title,url,state:'todo',detail:'[LOCAL FIXTURE] Review and save actual company records.'}))}};
   if(path==='/api/companies/current/setup')return {company:{...company,revision:1},profile:{business_type:'installer'},brand:{},business:{services:[],service_areas:[],rooftop_available:false,preferred_contact:'email',marketplace_requested:false},onboarding:{profile_saved_at:'2026-10-01',brand_saved_at:'2026-10-01'},history:[],members:[],activity:[],defaults:{},logoHosts:[]};
   return null;
@@ -357,15 +364,39 @@ try{
   await writeFile(resolve(output,mode+'-team.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
  }
  check('growth views do not introduce private API or navigation cache entries',await evaluate(`(async()=>{for(const name of await caches.keys()){for(const r of await (await caches.open(name)).keys()){const p=new URL(r.url).pathname;if(p.startsWith('/api')||p==='/'||p==='/index.html')return false;}}return true;})()`));
+
+ growthFixture='owner-today';await evaluate('(async()=>{await Account.refresh();await Account.refresh();})()');
+ for(const [width,height] of [[1366,768],[1440,900],[1536,864],[390,844],[768,1024],[1024,768]]){
+  await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<768});await evaluate('Account.invalidate()');await navigate('/distributor/dashboard');await wait('!!document.querySelector(".boss-dashboard")');
+  check('Boss dashboard official logo and burgundy theme '+width+'x'+height,await evaluate('document.querySelector(".boss-sidebar img").getAttribute("src").includes("my-solar-solutions-logo") && getComputedStyle(document.querySelector(".boss-sidebar")).backgroundColor==="rgb(64, 19, 30)"'));
+  check('Boss dashboard readable layout fits '+width+'x'+height,await evaluate('document.documentElement.scrollWidth<=innerWidth+2'+(width>1100?' && document.documentElement.scrollHeight<=innerHeight+2':'')));
+  check('Boss real fixture metrics and unavailable channels labelled '+width,await evaluate('document.querySelectorAll(".boss-kpi").length===4 && document.querySelector(".boss-team").textContent.includes("3") && document.querySelector(".boss-tools").textContent.includes("Not connected") && document.querySelector(".boss-sales").textContent.includes("not cash received")'));
+  check('Boss panels do not clip content '+width,await evaluate('[...document.querySelectorAll(".boss-panel")].every(n=>n.scrollHeight<=n.clientHeight+2 && n.scrollWidth<=n.clientWidth+2)'));
+  if(width<=1100){
+   // Fresh route mount can still be within the existing 200ms drawer transition.
+   // Assert its settled closed position, not an arbitrary 150ms animation frame.
+   await wait('document.querySelector(".boss-sidebar").getBoundingClientRect().right<=1');
+   check('Boss tablet/mobile sidebar does not cover content when closed '+width,await evaluate('document.querySelector(".boss-sidebar").getBoundingClientRect().right<=1 && document.querySelector(".boss-header .mobile-toggle").getBoundingClientRect().width>0'));
+   await evaluate('document.querySelector(".boss-header .mobile-toggle").click()');await delay(350);
+   check('Boss mobile drawer remains above scrim and accepts navigation',await evaluate('(()=>{const a=document.querySelector(".boss-sidebar.open .nav-item"),r=a.getBoundingClientRect();return a.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})()'));
+   await evaluate('document.querySelector(".boss-sidebar .sidebar-close").click()');await delay(350);
+   if(width<768){await evaluate('document.querySelector(".boss-footnote").scrollIntoView({block:"end"})');
+   check('Boss mobile final actions clear the fixed work navigation',await evaluate('document.querySelector(".boss-footnote").getBoundingClientRect().bottom<=document.querySelector(".mobile-work-nav").getBoundingClientRect().top'));}
+   await evaluate('window.scrollTo(0,0)');
+  }
+  await writeFile(resolve(output,'boss-dashboard-'+width+'x'+height+'.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+ }
+ await evaluate('(()=>{const f=document.querySelector("#boss-search");f.elements.destination.value="/distributor/customers";f.elements.search.value="[LOCAL FIXTURE] & safe";f.requestSubmit();})()');await delay(150);check('Boss search uses existing customer search with encoded text',await evaluate('location.hash.includes("/distributor/customers?search=%5BLOCAL%20FIXTURE%5D%20%26%20safe")'));
+ await navigate('/distributor/quotation/new');await wait('document.querySelector("h1")?.textContent.includes("Choose a customer requirement")');check('new quotation starts with real source selection, not an empty enquiry request',await evaluate('[...document.querySelectorAll("main a")].some(a=>a.getAttribute("href")==="#/distributor/crm") && [...document.querySelectorAll("main a")].some(a=>a.getAttribute("href")==="#/distributor/leads")'));
  for(const mode of ['owner-today','employee-today','setup']){
   growthFixture=mode;await evaluate('(async()=>{await Account.refresh();await Account.refresh();})()');
   for(const width of [360,390,768,1024,1280,1440]){
    await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<768});await evaluate('Account.invalidate()');await navigate(mode==='setup'?'/distributor/setup':'/distributor/dashboard');
-   await wait(mode==='setup'?`!!document.getElementById('org-business')`:`document.querySelector('h1')?.textContent.includes(${JSON.stringify(mode==='owner-today'?'Today in your business.':'My work today.')})`);
+   await wait(mode==='setup'?`!!document.getElementById('org-business')`:`document.querySelector('h1')?.textContent.includes(${JSON.stringify(mode==='owner-today'?'Boss!':'My work today.')})`);
    check('distributor OS shell '+mode+' at '+width+'px has opaque white header and scoped blue surface',await evaluate('document.body.classList.contains("distributor-os") && getComputedStyle(document.querySelector(".workspace-header")).backgroundColor==="rgb(255, 255, 255)"'));
    check(`${mode} at ${width}px avoids horizontal overflow`,await evaluate('document.documentElement.scrollWidth<=innerWidth+2'));
    if(mode==='setup')check(`installer preset at ${width}px suggests installations without saving`,await evaluate(`document.querySelector('#org-business [name=services][value=rooftop_installation]').checked && !document.querySelector('#org-business [name=services][value=solar_panels]').checked`));
-   else if(mode==='owner-today')check(`owner first-lead and quotation guidance at ${width}px`,await evaluate(`!!document.querySelector('.workspace-start a[href="#/distributor/new?kind=leads"]') && !!document.querySelector('.workspace-start a[href="#/distributor/leads"]')`));
+   else if(mode==='owner-today')check(`owner first-lead and quotation guidance at ${width}px`,await evaluate(`!!document.querySelector('.boss-quick a[href="#/distributor/new?kind=contacts"]') && !!document.querySelector('.boss-quick a[href="#/distributor/quotation/new"]')`));
    else check(`employee has assigned work without management actions at ${width}px`,await evaluate(`!!document.querySelector('main a[href="#/distributor/tasks"]') && !document.querySelector('main a[href="#/distributor/new?kind=contacts"]') && !document.querySelector('.boss-balance')`));
   }
   await writeFile(resolve(output,mode+'.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
@@ -635,7 +666,12 @@ try{
    check('state change clears stale district '+mode+' '+width,await evaluate('document.querySelector("[name=district]").value==="" && [...document.querySelector("[name=district]").options].some(o=>o.value==="Chennai") && ![...document.querySelector("[name=district]").options].some(o=>o.value==="Kozhikode") && document.querySelector("[name=districtOther]").disabled'));
   }
  }
- growthFixture=null;await send('Fetch.disable');
+
+ growthFixture='master-notifications';await evaluate('(async()=>{await Account.refresh();await Account.refresh();})()');await navigate('/distributor/notifications');await wait('document.querySelector("main").textContent.includes("Manual quotation follow-up")');
+ check('manual quotation notification opens its real version without a null enquiry',await evaluate('[...document.querySelectorAll("main a")].some(a=>a.getAttribute("href")==="#/distributor/quotation?id='+fixtureCompany+'") && ![...document.querySelectorAll("main a")].some(a=>a.getAttribute("href")?.includes("enquiry?id=null"))'));
+ growthFixture='account-business';await evaluate('(async()=>{await Account.refresh();await Account.refresh();})()');await navigate('/distributor/onboarding');await wait('!!document.querySelector("#account-company-create")');
+ check('company creation form has a retry UUID without granting activation',await evaluate('/^[0-9a-f-]{36}$/.test(document.querySelector("#account-company-create [name=operationKey]").value) && !Account.activeCompany && document.querySelector("main").textContent.includes("unpublished")'));
+  growthFixture=null;await send('Fetch.disable');
  // Page-level CDP network emulation does not disable the worker's own network target.
  // Stop this isolated test server as well, so the worker observes a real connection failure.
  server.closeAllConnections();await new Promise(r=>server.close(r));

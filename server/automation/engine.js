@@ -1,3 +1,4 @@
+import {quotationStaffAccess,quotationCustomer} from './quotation-scope.js';
 import {config} from '../config.js';
 import {enqueueMail} from '../mail-queue.js';
 import {randomUUID} from 'node:crypto';
@@ -12,7 +13,7 @@ const log=(db,job,outcome,code)=>db.query('INSERT INTO automation_attempts(job_i
 const day=async db=>(await db.query("SELECT (now() AT TIME ZONE 'Asia/Kolkata')::date::text AS day")).rows[0].day;
 async function member(db,companyId,userId){const row=(await db.query("SELECT m.role_id FROM company_memberships m JOIN users u ON u.id=m.user_id WHERE m.company_id=$1 AND m.user_id=$2 AND m.status='active' AND u.status='active'",[companyId,userId])).rows[0];if(!row)return null;return {companyId,userId,role:row.role_id,permissions:await companyPermissions(db,row.role_id,companyId,userId)};}
 async function source(db,rule,recordId=null,after=null){const d=reminders[rule.kind];return (await db.query(`SELECT r.*,r.${d.date}::text AS ${d.date} FROM ${d.table} r WHERE r.company_id=$1 AND ($2::uuid IS NULL OR r.id=$2) AND ${dueCondition(rule.kind)} AND ($4::uuid IS NULL OR r.id>$4) ORDER BY r.id LIMIT 100 ${recordId?'FOR SHARE':''}`,[rule.company_id,recordId,rule.lead_days,after])).rows;}
-async function customerId(db,kind,row){return kind==='quotation'?(await db.query('SELECT customer_id AS user_id FROM customer_enquiries WHERE id=$1',[row.enquiry_id])).rows[0]?.user_id:(await db.query('SELECT user_id FROM company_contacts WHERE id=$1 AND company_id=$2',[row.contact_id,row.company_id])).rows[0]?.user_id;}
+async function customerId(db,kind,row){return kind==='quotation'?await quotationCustomer(db,row):(await db.query('SELECT user_id FROM company_contacts WHERE id=$1 AND company_id=$2',[row.contact_id,row.company_id])).rows[0]?.user_id;}
 async function allowedRecipient(db,rule,row,userId,audience){
  const d=reminders[rule.kind];
  const preference=(await db.query('SELECT enabled,kinds FROM reminder_preferences WHERE user_id=$1 FOR SHARE',[userId])).rows[0];
@@ -25,7 +26,7 @@ async function allowedRecipient(db,rule,row,userId,audience){
  const projectAssignment=['milestone','stage'].includes(rule.kind)&&(await db.query('SELECT 1 FROM project_assignments WHERE project_id=$1 AND company_id=$2 AND user_id=$3',[row[d.target||'id'],rule.company_id,userId])).rowCount>0;
  if(ctx.role!=='owner'&&!assigned&&!projectAssignment)return false;
  try{await requireStaffEntitlement(db,ctx.companyId,ctx.role);}catch(error){if(error.status)return false;throw error;}
- if(rule.kind==='quotation')return ctx.permissions.includes('quotations.read')&&ctx.permissions.includes('leads.read');
+ if(rule.kind==='quotation')return quotationStaffAccess(ctx.permissions,row);
  try{operations.readPermission(ctx,d.recordKind);}catch(error){if(error.status)return false;throw error;}
  const b=new operations.Bindings(),where=operations.scope(ctx,d.recordKind,b);where.push(`r.id=${b.add(['maintenance','renewal'].includes(rule.kind)?row.order_id:row[d.target||'id'])}`);
  return (await db.query(`SELECT 1 FROM ${operations.definitions[d.recordKind][0]} r WHERE ${where.join(' AND ')}`,b.values)).rowCount>0;

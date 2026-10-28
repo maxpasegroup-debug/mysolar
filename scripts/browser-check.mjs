@@ -424,6 +424,7 @@ try{
   await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<768});
   await navigate('/distributor/dashboard');await wait(`!!document.querySelector('.workspace-facilities')`);
   check(`setup dashboard shows three truthful facilities at ${width}px`,await evaluate(`document.querySelectorAll('.facility-card').length===3 && document.querySelector('main').textContent.includes('Setup in progress') && !document.querySelector('main').textContent.includes('Company active') && document.documentElement.scrollWidth<=innerWidth+2`));
+  check(`new owners receive the burgundy Boss setup design at ${width}px`,await evaluate(`document.body.classList.contains("boss-active") && !!document.querySelector(".boss-setup") && getComputedStyle(document.querySelector(".boss-sidebar")).backgroundColor==="rgb(64, 19, 30)" && !document.querySelector(".boss-sales") && ![...document.querySelectorAll("main a")].some(a=>a.getAttribute("href")==="#/distributor/new?kind=orders")`));
   if([390,1440].includes(width))await writeFile(resolve(output,'setup-dashboard-'+width+'.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
   await navigate('/distributor/public-profile');await wait(`document.querySelector('main').textContent.includes('Prepare your listing')`);
   check(`public profile manager at ${width}px preserves publication boundary`,await evaluate(`!document.querySelector('main a[href^="#/storefront?company="]') && document.documentElement.scrollWidth<=innerWidth+2`));
@@ -431,6 +432,12 @@ try{
   check(`consultation is an unsubmitted WhatsApp draft at ${width}px`,await evaluate(`document.querySelector('main a[href^="https://wa.me/"]').href.startsWith('https://wa.me/918136906653?text=') && document.querySelector('main').textContent.includes('does not submit or record') && document.documentElement.scrollWidth<=innerWidth+2`));
  }
 
+
+ for(const [width,height] of [[1366,768],[1440,900],[1536,864]]){
+  await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});await navigate('/distributor/dashboard');await wait('!!document.querySelector(".boss-setup")');
+  check('Boss setup fits desktop without clipping '+width+'x'+height,await evaluate('document.documentElement.scrollHeight<=innerHeight+2 && document.documentElement.scrollWidth<=innerWidth+2 && [...document.querySelectorAll(".boss-setup-main>.boss-panel")].every(n=>n.scrollHeight<=n.clientHeight+2)'));
+  await writeFile(resolve(output,'boss-setup-'+width+'x'+height+'.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+ }
  await navigate('/distributor/setup?step=guide');await wait('!!document.querySelector(".practical-setup-steps")');
  for(const width of [360,390,768,1024,1280,1440]){
   await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<768});await delay(300);

@@ -50,7 +50,17 @@ test('owner view preserves role boundary and uses real values with honest unavai
  const html=boss.page({cards:[],priorities:[],outstanding:null,boss:{sales:null,activeQuotations:0,team:{activeEmployees:0,overdueTasks:null}}});
  assert.match(html,/Unavailable/);assert.match(html,/Attendance and leave tracking are not available/);assert.match(html,/Coming soon/);assert.match(html,/Not connected/);assert.doesNotMatch(html,/href="#\/distributor\/new\?kind=invoices"/);assert.doesNotMatch(html,/href="#\/distributor\/accounts"/);
  assert.match(html,/href="#\/distributor\/quotation\/new"/);assert.doesNotMatch(html,/4,86,000|1,24,500/);
- account.activeCompany.role='sales';assert.equal(boss.enabled(),false);account.activeCompany.role='owner';account.activeCompany.lifecycle='draft';assert.equal(boss.enabled(),false);
+ account.activeCompany.role='sales';assert.equal(boss.enabled(),false);account.activeCompany.role='owner';account.activeCompany.lifecycle='draft';assert.equal(boss.enabled(),true);
+});
+test('all inactive owner states use the Boss design without pretending activation or fetching operational totals',()=>{
+ const {boss,account}=ui([]);
+ for(const [lifecycle,label] of [['draft','Setup not started'],['onboarding','Setup in progress'],['pending_review','Awaiting activation review'],['suspended','Company suspended']]){
+  account.activeCompany.lifecycle=lifecycle;assert.equal(boss.enabled(),true);
+  const html=boss.setupPage({company:{name:'Company <unsafe>',lifecycle,storefront_published:false},onboarding:{profile_saved_at:'2026-10-28'}});
+  assert.match(html,/boss-setup/);assert.ok(html.includes(label));assert.match(html,/1 \/ 3/);assert.match(html,/Unpublished/);assert.match(html,/Company &lt;unsafe>/);
+  assert.doesNotMatch(html,/Confirmed orders this month|Payments to Collect|Company active|kind=orders|kind=invoices/);
+  if(['pending_review','suspended'].includes(lifecycle)){assert.match(html,/View review status/);assert.doesNotMatch(html,/href="#\/distributor\/setup\?step=profile"/);}
+ }
 });
 test('chart displays exact server totals, period boundaries and a text equivalent',()=>{
  const {boss}=ui(['orders.read','finance.read']);const html=boss.page({cards:[],priorities:[],outstanding:'5000',boss:{sales:{current:'15000',previous:'10000',periods:{current:{from:'2026-10-01',to:'2026-10-28'}}},activeQuotations:2}});

@@ -1,4 +1,5 @@
 import {activeQuotationSql} from '../purchase/active.js';
+import {workspaceBlueprint} from '../setup/sia-plan.js';
 import * as c from './core.js';
 import {managementReport} from './reporting.js';
 
@@ -12,6 +13,7 @@ export function salesPeriods(now=new Date()){
 // than maintaining a second financial calculation or client-side total.
 export async function bossSummary(db,ctx,{report=managementReport,now=new Date()}={}){
  const result={sales:null,activeQuotations:null,team:null};
+ if(ctx.role==='owner'&&c.has(ctx,'company.setup.read'))result.workspacePlan=await workspaceBlueprint(db,ctx.companyId);
  if(c.has(ctx,'orders.read')){
   const periods=salesPeriods(now),values=[];
   for(const period of [periods.current,periods.previous]){

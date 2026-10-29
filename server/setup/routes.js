@@ -1,4 +1,5 @@
 import {deliveryReadiness} from './delivery.js';
+import {setupCatalogue,validateSetupPlan,saveSetupPlan,workspaceBlueprint} from './sia-plan.js';
 import {setupGuide,choiceDefaults} from './guide.js';
 import { Router } from 'express';
 import { config } from '../config.js';
@@ -16,6 +17,25 @@ import {peopleData} from '../people-sales.js';
 export const setup=Router();
 setup.use(requireUser);
 setup.use((req,res,next)=>['GET','HEAD'].includes(req.method)?next():csrf(req,res,next));
+setup.get('/setup/sia-plan',async(req,res)=>res.json(await withCompany(req,'company.setup.read',async(db,ctx)=>{
+ if(ctx.role!=='owner')throw new HttpError(403,'OWNER_REQUIRED','Only the company owner can view this private setup plan.');
+ const data=await setupData(db,ctx.companyId);
+ const plan=(await db.query('SELECT plan FROM company_workspace_plans WHERE company_id=$1',[ctx.companyId])).rows[0]?.plan||null;
+ return {catalogue:setupCatalogue,company:data.company,profile:data.profile,plan};
+})));
+setup.put('/setup/sia-plan',async(req,res)=>{
+ v.body(req.body,['revision','plan']);const revision=input.revision(req.body.revision),plan=validateSetupPlan(req.body.plan);
+ res.json(await withCompany(req,'company.onboarding.manage',async(db,ctx)=>{
+  if(ctx.role!=='owner')throw new HttpError(403,'OWNER_REQUIRED','Only the company owner can change the workspace plan.');
+  const company=(await db.query('SELECT c.revision,c.lifecycle,c.marketplace_status,c.storefront_published,p.website FROM companies c JOIN company_profiles p ON p.company_id=c.id WHERE c.id=$1',[ctx.companyId])).rows[0];
+  expectRevision(company,revision);editable(company);
+  await saveSetupPlan(db,ctx.companyId,ctx.userId,plan);
+  if((company.website||'')!==plan.website)await markChanged(db,ctx,company,'company.workspace_website_updated');
+  else await db.query('UPDATE companies SET revision=revision+1,updated_at=now() WHERE id=$1',[ctx.companyId]);
+  await audit(db,{actor:ctx.userId,company:ctx.companyId,action:'company.workspace_plan_saved',target:ctx.companyId,metadata:{revision:revision+1,productCount:plan.products.length,positionCount:plan.team.reduce((n,r)=>n+r.count,0)}});
+  return {message:'Workspace plan saved. No employees, permissions, messages or automations were activated.'};
+ }));
+});
 setup.patch('/team/:id/details',async(req,res)=>{
  const id=v.uuid(req.params.id);v.body(req.body,['revision','staffDetails']);
  const details=staffDetails(req.body.staffDetails,'part_time_sales');if(!Number.isSafeInteger(req.body.revision)||req.body.revision<1)throw new HttpError(400,'INVALID_INPUT','Refresh the executive details.');
@@ -28,7 +48,7 @@ setup.patch('/team/:id/details',async(req,res)=>{
   return {message:'Executive business details saved. Account identity and permissions are unchanged.'};
  }));
 });
-setup.get('/setup',async(req,res)=>res.json(await withCompany(req,'company.setup.read',async(db,ctx)=>({...(await setupData(db,ctx.companyId,{team:true})),logoHosts:config.logoHosts,defaults:brandDefaults}))));
+setup.get('/setup',async(req,res)=>res.json(await withCompany(req,'company.setup.read',async(db,ctx)=>({...(await setupData(db,ctx.companyId,{team:true})),...(ctx.role==='owner'?{workspacePlan:await workspaceBlueprint(db,ctx.companyId)}:{}),logoHosts:config.logoHosts,defaults:brandDefaults}))));
 setup.get('/setup/delivery',async(req,res)=>res.json(await withCompany(req,'company.setup.read',(db,ctx)=>deliveryReadiness(db,ctx))));
 setup.get('/setup/guide',async(req,res)=>res.json(await withCompany(req,'company.setup.read',async(db,ctx)=>{const data=await setupData(db,ctx.companyId);return {company:data.company,guide:await setupGuide(db,ctx,data)};})));
 setup.put('/setup/decisions',async(req,res)=>{

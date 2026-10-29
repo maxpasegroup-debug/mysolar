@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import {setupCatalogue} from '../server/setup/sia-plan.js';
 import { once } from 'node:events';
 import { readFile,writeFile,mkdir,access } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -15,6 +16,8 @@ let lastPeoplePayload=null;let holdFundingFiles=false,heldFundingFiles=null;
 let ws,growthFixture=null,privatePrintContext=false,holdMarketplaceContext=false,heldMarketplaceContext=null,holdMarketplaceProducts=false,heldMarketplaceProducts=null;
 const fixtureUser='20000000-0000-4000-8000-000000000001',fixtureCompany='10000000-0000-4000-8000-000000000001',fixtureStaff='20000000-0000-4000-8000-000000000002';
 function growthData(path){
+ if(path==='/api/companies/setup-options')return {catalogue:setupCatalogue};
+ if(path==='/api/companies/current/setup/sia-plan'&&growthFixture==='setup')return {catalogue:setupCatalogue,company:{id:fixtureCompany,name:'[LOCAL FIXTURE] Company',business_email:'user@example.invalid',phone:'+91 9000000000',lifecycle:'onboarding',revision:3},profile:{},plan:{website:'',emergencyContact:'+91 9000000000',whatsapp:'+91 9000000000',products:['solar_panels'],otherProducts:'',team:[{role:'telecaller',count:2}]}};
  if(growthFixture==='master-notifications'){
   const company={id:fixtureCompany,name:'[LOCAL FIXTURE] Manual sales',role:'sales',role_label:'Sales',status:'active',lifecycle:'active',brand:{}};
   if(path==='/api/auth/session')return {user:{id:fixtureUser,name:'[LOCAL FIXTURE] Sales employee',accountType:'business'},companies:[company],activeCompany:company,permissions:['workspace.read','crm.read','quotations.read'],customerPermissions:[],platformPermissions:[],csrfToken:'fixture-only'};
@@ -189,7 +192,7 @@ function growthData(path){
   if(path==='/api/auth/session')return {user:{id:fixtureUser,name:'[LOCAL FIXTURE] User',email:'user@example.invalid'},companies:[company],activeCompany:company,permissions,customerPermissions:[],platformPermissions:[],csrfToken:'fixture-only',recoveryAvailable:false};
   if(path==='/api/companies/current/operations/dashboard')return {boss:employee?null:{sales:{current:'120000',previous:'90000',periods:{current:{from:'2026-10-01',to:'2026-10-28'},previous:{from:'2026-09-01',to:'2026-09-30'}}},activeQuotations:2,team:{activeEmployees:3,overdueTasks:1}},cards:[{kind:'tasks',label:'Assigned tasks',value:0},{kind:'orders',label:'Confirmed orders',value:2}],events:[],priorities:[],outstanding:employee?null:'0',asOf:new Date().toISOString(),scope:'Fictional browser fixture; database behavior tested separately.',gettingStarted:employee?{}:{customers:0,leads:0,quotations:0,employees:0}};
   if(path==='/api/companies/current/setup/guide')return {company:{...company,revision:1,marketplace_status:'not_requested',storefront_published:false},guide:{completed:0,total:7,canManage:true,choices:{offers_mode:'undecided',team_mode:'undecided',opening_mode:'undecided',communications_reviewed:false},counts:{},communications:{emailConfigured:false,invitationMode:'email'},notice:'[LOCAL FIXTURE] Saved progress only; not activation or publication.',steps:[['company','Company details','/distributor/setup?step=profile'],['identity','Public identity','/distributor/setup?step=brand'],['coverage','Services & coverage','/distributor/setup?step=business'],['offers','Catalogue & your offers','/distributor/offers'],['team','Team access','/distributor/team'],['opening','Opening records','/distributor/setup?step=guide'],['communications','Communication settings','/distributor/setup?step=guide']].map(([id,title,url])=>({id,title,url,state:'todo',detail:'[LOCAL FIXTURE] Review and save actual company records.'}))}};
-  if(path==='/api/companies/current/setup')return {company:{...company,revision:1},profile:{business_type:'installer'},brand:{},business:{services:[],service_areas:[],rooftop_available:false,preferred_contact:'email',marketplace_requested:false},onboarding:{profile_saved_at:'2026-10-01',brand_saved_at:'2026-10-01'},history:[],members:[],activity:[],defaults:{},logoHosts:[]};
+  if(path==='/api/companies/current/setup')return {workspacePlan:{products:['solar_panels'],team:[{role:'telecaller',count:2}]},company:{...company,revision:1},profile:{business_type:'installer'},brand:{},business:{services:[],service_areas:[],rooftop_available:false,preferred_contact:'email',marketplace_requested:false},onboarding:{profile_saved_at:'2026-10-01',brand_saved_at:'2026-10-01'},history:[],members:[],activity:[],defaults:{},logoHosts:[]};
   return null;
  }
  const enabled=growthFixture==='pro',access={enabled,priceLabel:'₹5,999 + GST/month'},permissions=['workspace.read','company.read','company.setup.read','members.read','members.manage','invitations.manage','partners.read','partners.manage','tasks.own','tasks.manage'];
@@ -453,7 +456,7 @@ try{
  await navigate('/distributor/onboarding');await wait(`document.querySelector('main').textContent.includes('Resume your existing company')`);
  check('existing-company onboarding offers resume before creating a duplicate',await evaluate(`!!document.querySelector('main a[href="#/distributor/dashboard"]') && !document.getElementById('account-company-create')`));
  await navigate('/distributor/onboarding?new=1');await wait(`!!document.getElementById('account-company-create')`);
- check('company entry uses stage two with four supported business presets',await evaluate(`document.querySelectorAll('.business-journey li').length===3 && document.querySelector('.business-journey li[aria-current]').textContent.includes('Your company') && document.querySelectorAll('.workspace-presets input[type=radio]').length===4 && !document.querySelector('.workspace-presets').textContent.includes('Supplier')`));
+ check('company entry uses guided SIA company step with four supported business presets',await evaluate(`document.querySelectorAll('.scs-progress li').length===3 && document.querySelector('.scs-progress li[aria-current]').textContent.includes('Company') && document.querySelectorAll('.workspace-presets input[type=radio]').length===4 && !document.querySelector('.workspace-presets').textContent.includes('Supplier')`));
  growthFixture='customer-journey';await evaluate('(async()=>{await Account.refresh();await Account.refresh();})()');
  for(const width of [360,390,768,1024,1280,1440]){
   await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<768});
@@ -663,7 +666,7 @@ try{
    await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<768});
    // Changing viewport on the same hash intentionally preserves entered values.
    // Open a fresh form before checking defaults at each width.
-   await navigate('/');await navigate(mode==='setup'?'/distributor/setup?step=profile':'/distributor/onboarding');await wait('!!document.querySelector("[data-company-location]")');
+   await navigate('/');await navigate(mode==='setup'?'/distributor/setup?step=profile':'/distributor/onboarding');await wait('!!document.querySelector("[data-company-location]")');await evaluate('if(document.querySelector(".scs-location"))document.querySelector(".scs-location").open=true');
    check('company country defaults to India and district waits for state '+mode+' '+width,await evaluate('document.querySelector("[name=countryCode]").value==="IN" && document.querySelector("[name=state]").options.length===37 && document.querySelector("[name=district]").disabled && document.documentElement.scrollWidth<=innerWidth+2'));
    await evaluate('(()=>{const s=document.querySelector("[data-company-location] [name=state]");s.value="Kerala";s.dispatchEvent(new Event("change",{bubbles:true}));})()');
    check('Kerala provides Kozhikode and 14 district options '+mode+' '+width,await evaluate('document.querySelector("[name=district]").options.length===16 && [...document.querySelector("[name=district]").options].some(o=>o.value==="Kozhikode") && !document.querySelector("[name=district]").disabled'));
@@ -678,6 +681,33 @@ try{
  check('manual quotation notification opens its real version without a null enquiry',await evaluate('[...document.querySelectorAll("main a")].some(a=>a.getAttribute("href")==="#/distributor/quotation?id='+fixtureCompany+'") && ![...document.querySelectorAll("main a")].some(a=>a.getAttribute("href")?.includes("enquiry?id=null"))'));
  growthFixture='account-business';await evaluate('(async()=>{await Account.refresh();await Account.refresh();})()');await navigate('/distributor/onboarding');await wait('!!document.querySelector("#account-company-create")');
  check('company creation form has a retry UUID without granting activation',await evaluate('/^[0-9a-f-]{36}$/.test(document.querySelector("#account-company-create [name=operationKey]").value) && !Account.activeCompany && document.querySelector("main").textContent.includes("unpublished")'));
+
+ for(const width of [360,390,768,1024,1280,1440]){
+  await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<768});await navigate('/');await navigate('/distributor/onboarding');await wait('!!document.querySelector("[data-scs-form]")');
+  check('SIA setup has default email and starts at company step '+width,await evaluate('document.querySelector("[name=email]").value===Account.user.email && document.querySelector("[name=email]").readOnly && !document.querySelector("[data-scs-step]:nth-of-type(1)").hidden && document.querySelector("[data-scs-step]:nth-of-type(2)").hidden'));
+  await evaluate('document.querySelector("[data-scs-next]").click()');
+  check('SIA stops an incomplete first step '+width,await evaluate('!document.querySelector("[data-scs-step]:nth-of-type(1)").hidden'));
+  await evaluate('(()=>{const f=document.querySelector("[data-scs-form]");f.elements.name.value="[LOCAL FIXTURE] Company";f.elements.emergencyContact.value="9000000000";f.elements.emergencyContact.dispatchEvent(new Event("input",{bubbles:true}));f.querySelector("[name=businessPreset][value=both]").click();f.elements.state.value="Kerala";f.elements.state.dispatchEvent(new Event("change",{bubbles:true}));f.elements.district.value="Kozhikode";f.querySelector("[data-scs-next]").click();})()');
+  check('SIA product step uses ten genuine choices and matching WhatsApp '+width,await evaluate('!document.querySelector("[data-scs-step]:nth-of-type(2)").hidden && document.querySelectorAll("[name=planProducts]").length===10 && document.querySelector("[name=whatsapp]").value==="9000000000" && document.documentElement.scrollWidth<=innerWidth+2'));
+  await evaluate('document.querySelector("[data-scs-next]").click()');
+  check('SIA requires a product or other description '+width,await evaluate('document.querySelector("#account-feedback").textContent.includes("Choose at least one") && !document.querySelector("[data-scs-step]:nth-of-type(2)").hidden'));
+  await evaluate('(()=>{document.querySelector("[name=planProducts][value=solar_panels]").click();document.querySelector("[data-scs-next]").click();document.querySelector("[data-scs-role=telecaller]").click();const n=document.querySelector("[data-scs-count=telecaller]");n.value="2";n.dispatchEvent(new Event("input",{bubbles:true}));})()');
+  check('SIA team grid and live summary fit '+width,await evaluate('!document.querySelector("[data-scs-step]:nth-of-type(3)").hidden && document.querySelectorAll("[data-scs-role]").length===13 && document.querySelector("[data-scs-summary]").textContent.includes("2 planned team positions") && document.documentElement.scrollWidth<=innerWidth+2'));
+  check('SIA selected count enables and unselected counts stay disabled '+width,await evaluate('!document.querySelector("[data-scs-count=telecaller]").disabled && document.querySelector("[data-scs-count=director]").disabled'));
+  await evaluate('document.querySelector("[data-scs-confirm]").click()');
+  check('SIA serializes confirmed roles without permission claims '+width,await evaluate('(()=>{const p=SiaCompanySetup.values(document.querySelector("[data-scs-form]"));return p.team[0].role==="telecaller" && p.team[0].count===2 && p.products[0]==="solar_panels" && !Object.hasOwn(p,"permissions") && !Account.activeCompany;})()'));
+  if(width===390||width===1440){await evaluate('window.scrollTo(0,0)');await writeFile(resolve(output,'sia-company-team-'+width+'.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));}
+  await evaluate('document.querySelector("[data-scs-back]").click()');
+  check('SIA back preserves chosen products '+width,await evaluate('document.querySelector("[name=planProducts][value=solar_panels]").checked && !document.querySelector("[data-scs-step]:nth-of-type(2)").hidden'));
+ }
+
+ await evaluate('document.querySelector("[data-scs-next]").click();document.querySelector("[data-scs-save]").click()');await wait('document.querySelector("#account-feedback").textContent.includes("does not perform business actions")');
+ check('SIA failed company save retains the reviewed plan and shows no success',await evaluate('!!document.querySelector("#account-company-create") && !Account.activeCompany && document.querySelector("[data-scs-role=telecaller]").checked && document.querySelector("[data-scs-count=telecaller]").value==="2" && !document.querySelector("[data-scs-save]").disabled'));
+ await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+ check('SIA placeholder respects reduced motion',await evaluate('getComputedStyle(document.querySelector(".scs-avatar")).animationName==="none"'));
+ await send('Emulation.setEmulatedMedia',{features:[]});
+ growthFixture='setup';await evaluate('(async()=>{await Account.refresh();await Account.refresh();})()');await navigate('/distributor/setup?step=sia');await wait('!!document.querySelector("#sia-company-plan")');
+ check('SIA saved team and products resume without creating another company',await evaluate('document.querySelector("[data-scs-role=telecaller]").checked && document.querySelector("[data-scs-count=telecaller]").value==="2" && document.querySelector("[name=planProducts][value=solar_panels]").checked && !document.querySelector("[name=operationKey]")'));
   growthFixture=null;await send('Fetch.disable');
  // Page-level CDP network emulation does not disable the worker's own network target.
  // Stop this isolated test server as well, so the worker observes a real connection failure.

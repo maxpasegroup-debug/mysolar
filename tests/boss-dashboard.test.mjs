@@ -17,6 +17,11 @@ test('no permissions means no database queries or financial/employee disclosure'
  const db={query(){assert.fail('Unauthorized query');}};
  assert.deepEqual(await bossSummary(db,{companyId:company,userId:user,permissions:[]}),{sales:null,activeQuotations:null,team:null});
 });
+test('only an authorised owner receives the scoped workspace blueprint',async()=>{
+ const calls=[],db={query:async(sql,args)=>{calls.push({sql,args});return {rows:[{products:['inverters'],team:[{role:'telecaller',count:2}],emergencyContact:'private'}]};}};
+ const data=await bossSummary(db,{companyId:company,role:'owner',permissions:['company.setup.read']});assert.equal(calls.length,1);assert.deepEqual(calls[0].args,[company]);assert.deepEqual(data.workspacePlan,{products:['inverters'],team:[{role:'telecaller',count:2}]});assert.ok(!JSON.stringify(data).includes('private'));
+ calls.length=0;const staff=await bossSummary(db,{companyId:company,role:'sales',permissions:['company.setup.read']});assert.equal(calls.length,0);assert.ok(!Object.hasOwn(staff,'workspacePlan'));
+});
 test('sales reuses the authorized report calculation and never fabricates a missing total',async()=>{
  const calls=[],ctx={companyId:company,userId:user,permissions:['orders.read']},db={query(){assert.fail('Unexpected direct query');}};
  const data=await bossSummary(db,ctx,{now:new Date('2026-10-28T00:00:00Z'),report:async(actual,auth,q)=>{assert.equal(actual,db);assert.equal(auth,ctx);calls.push(q);return {summary:[{label:'Agreed order value incl. recorded tax - not cash received',format:'money',value:'12000'}]};}});
@@ -65,4 +70,9 @@ test('all inactive owner states use the Boss design without pretending activatio
 test('chart displays exact server totals, period boundaries and a text equivalent',()=>{
  const {boss}=ui(['orders.read','finance.read']);const html=boss.page({cards:[],priorities:[],outstanding:'5000',boss:{sales:{current:'15000',previous:'10000',periods:{current:{from:'2026-10-01',to:'2026-10-28'}}},activeQuotations:2}});
  assert.match(html,/role="img"/);assert.match(html,/INR 15000/);assert.match(html,/Previous full month/);assert.match(html,/no growth percentage implied/);assert.match(html,/2026-10-01/);assert.doesNotMatch(html,/height:150%/);
+});
+test('dashboard separates planned positions from actual employee counts',()=>{
+ const {boss}=ui(['members.read']);const plan={products:['inverters','solar_panels'],team:[{role:'telecaller',count:6}]};
+ const html=boss.page({cards:[],priorities:[],boss:{team:{activeEmployees:0,overdueTasks:null},workspacePlan:plan}});
+ assert.match(html,/2 product \/ service choices/);assert.match(html,/6 planned positions/);assert.match(html,/Planned positions are not active employees/);assert.match(html,/<strong>0<\/strong><span>Active employees/);
 });

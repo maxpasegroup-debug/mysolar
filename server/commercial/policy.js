@@ -1,3 +1,4 @@
+import {osGate} from './os-access.js';
 import { HttpError } from '../errors.js';
 import {requirePro,PART_TIME_ROLE} from './growth.js';
 export const features=Object.freeze({storefront:'Public storefront',catalogue:'Catalogue and offers',crm:'CRM and enquiries',quotations:'Quotations',orders:'Orders',team:'Team members',inventory:'Inventory and procurement',projects:'Projects and field work',finance:'Finance records',service:'Customer service',white_label:'White-label customization',sia_ceo:'SIA Virtual CEO',custom_domain:'Future custom-domain capability'});
@@ -8,7 +9,7 @@ export function requireFeature(p,feature){if(!enabled(p,feature))throw new HttpE
 export async function teamCapacity(db,companyId,excludeInvitation=null){const p=await policy(db,companyId);requireFeature(p,'team');const limit=p.limits.team;if(limit===null||limit===undefined)return;const r=(await db.query("SELECT (SELECT count(*) FROM company_memberships WHERE company_id=$1 AND status='active')+(SELECT count(*) FROM company_invitations WHERE company_id=$1 AND status='pending' AND expires_at>now() AND ($2::uuid IS NULL OR id<>$2)) AS used",[companyId,excludeInvitation])).rows[0];if(Number(r.used)>=limit)throw new HttpError(409,'PLAN_LIMIT_REACHED','The team allowance is full, including active members and pending invitations. Revoke an unused invitation, suspend an unneeded membership or contact the administrator.');}
 const groups={funding:'finance',finance:'finance',contacts:'crm',leads:'crm',orders:'orders',inventory:'inventory',stock:'inventory',reservations:'inventory',suppliers:'inventory',purchases:'inventory',receipts:'inventory',projects:'projects',tasks:'projects',invoices:'finance',collections:'finance',bills:'finance',service:'service'};
 // Called inside withCompany, after permission checks and the existing company lock.
-export async function guard(db,ctx,req,permission){if(['GET','HEAD'].includes(req.method))return;const path=req.originalUrl.split('?')[0].replace(/\/{2,}/g,'/').replace(/^\/api\/companies\/current\/?/,'');
+export async function guard(db,ctx,req,permission){if(await osGate(db,ctx,req))return;if(['GET','HEAD'].includes(req.method))return;const path=req.originalUrl.split('?')[0].replace(/\/{2,}/g,'/').replace(/^\/api\/companies\/current\/?/,'');
  if(ctx.role===PART_TIME_ROLE)await requirePro(db,ctx.companyId);
  if(path==='partners'||path.startsWith('partners/')){if(!['suspended','revoked','declined'].includes(req.body?.status))await requirePro(db,ctx.companyId);return;}
  if(path.startsWith('subscription'))return;

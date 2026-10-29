@@ -1,3 +1,4 @@
+import {osRoutes,billingAdmin,billingWebhook} from './commercial/os-routes.js';
 import express from 'express';
 import {whiteLabel,publishedWebsites} from './white-label.js';
 import {serviceContracts} from './service-contracts.js';
@@ -69,6 +70,7 @@ app.use(hostnameBoundary({db:pool,origin:config.origin,production:config.product
 app.get('/healthz',(req,res)=>{res.set('Cache-Control','no-store').json({status:'ok'});});
 let readiness;
 app.get('/readyz',async(req,res)=>{res.set('Cache-Control','no-store');try{readiness??=(async()=>{const expected=await migrationManifest(),result=await pool.query({text:'SELECT name,checksum FROM schema_migrations WHERE name=ANY($1::text[])',values:[expected.map(x=>x.name)],query_timeout:1500});return expected.every(x=>result.rows.some(r=>r.name===x.name&&r.checksum===x.checksum));})().finally(()=>{readiness=null;});const ready=await readiness;res.status(ready?200:503).json({status:ready?'ready':'unavailable'});}catch{res.status(503).json({status:'unavailable'});}});
+app.use('/webhooks/razorpay',billingWebhook);
 app.use('/api',async(req,res,next)=>{
   res.set('Cache-Control','no-store');
   if(req.get('sec-fetch-site')==='cross-site')throw new HttpError(403,'ORIGIN_REJECTED','Use the application from its configured address.');
@@ -88,6 +90,8 @@ app.use('/api/reminders/preferences',reminderPreferences);
 app.use('/api/companies/current/automation',automation);
 app.use('/api/platform/domains',platformDomains);
 app.use('/api/companies/current/domains',companyDomains);
+app.use('/api/companies/current/os',osRoutes);
+app.use('/api/platform/billing',billingAdmin);
 app.use('/api/platform/commercial',commercial);
 app.use('/api/companies/current/subscription',ownerCommercial);
 app.use('/api/customer/sia',siaRoutes());
@@ -112,7 +116,7 @@ app.get('/api/platform/audit',requireUser,platformAudit);
 app.use('/api',(req,res)=>res.status(404).json({error:{code:'NOT_FOUND',message:'API route not found.',requestId:req.requestId}}));
 // Explicit asset allowlist. Never expose .env, server source, migrations or dependency directories.
 const root=new URL('../',import.meta.url);
-for(const asset of ['sia-company-setup.css','src/sia-company-setup.js','boss-dashboard.css','src/boss-dashboard.js','src/india-geography.js','src/company-location.js','src/solar-marketplace.js','src/customer-locale.js','src/customer-dashboard.js','customer-dashboard.css','src/private-download.js','src/release-tools.js','src/print-record.js','src/account-security.js','src/mobile-auth.js','src/automation.js','src/workspace.js','solar-discovery.css','src/solar-discovery.js','onboarding.css','src/onboarding.js','public-header.css','src/public-header.js','assets/solar-lighting-pumps.svg','assets/dashboard-support-agent.webp','assets/dashboard-category-illustrations.webp','assets/dashboard-solar-home.webp','assets/my-solar-solutions-logo.png','landing.css','src/landing.js','assets/landing-solar.jpg','assets/landing-solar-960.webp','assets/landing-solar-1536.webp','assets/hero-cloud.png','assets/hero-cloud-a.png','assets/hero-cloud-b.png','assets/hero-cloud-c.png','assets/hero-island.png','assets/hero-panel-piece.png','index.html','styles.css','accounts.css','organization.css','marketplace.css','purchase.css','operations.css','experience.css','sia.css','src/sia.js','commercial.css','src/commercial.js','manifest.webmanifest','sw.js','offline.html','offline.css','assets/app-mark.svg','assets/app-192.png','assets/app-512.png','assets/apple-touch-icon.png','src/locale.js','src/journey.js','src/pwa.js','src/experience.js','src/app.js','src/account.js','src/growth.js','src/organization.js','src/marketplace.js','src/purchase.js','src/operations.js']) {
+for(const asset of ['business-access.css','src/business-access.js','business-onboarding.css','src/business-onboarding.js','sia-company-setup.css','src/sia-company-setup.js','boss-dashboard.css','src/boss-dashboard.js','src/india-geography.js','src/company-location.js','src/solar-marketplace.js','src/customer-locale.js','src/customer-dashboard.js','customer-dashboard.css','src/private-download.js','src/release-tools.js','src/print-record.js','src/account-security.js','src/mobile-auth.js','src/automation.js','src/workspace.js','solar-discovery.css','src/solar-discovery.js','onboarding.css','src/onboarding.js','public-header.css','src/public-header.js','assets/solar-lighting-pumps.svg','assets/dashboard-support-agent.webp','assets/dashboard-category-illustrations.webp','assets/dashboard-solar-home.webp','assets/my-solar-solutions-logo.png','landing.css','src/landing.js','assets/landing-solar.jpg','assets/landing-solar-960.webp','assets/landing-solar-1536.webp','assets/hero-cloud.png','assets/hero-cloud-a.png','assets/hero-cloud-b.png','assets/hero-cloud-c.png','assets/hero-island.png','assets/hero-panel-piece.png','index.html','styles.css','accounts.css','organization.css','marketplace.css','purchase.css','operations.css','experience.css','sia.css','src/sia.js','commercial.css','src/commercial.js','manifest.webmanifest','sw.js','offline.html','offline.css','assets/app-mark.svg','assets/app-192.png','assets/app-512.png','assets/apple-touch-icon.png','src/locale.js','src/journey.js','src/pwa.js','src/experience.js','src/app.js','src/account.js','src/growth.js','src/organization.js','src/marketplace.js','src/purchase.js','src/operations.js']) {
   app.get(`/${asset}`,(req,res)=>{res.set('Cache-Control','no-cache');if(asset==='manifest.webmanifest')res.type('application/manifest+json');if(asset==='sw.js')res.set('Service-Worker-Allowed','/');res.sendFile(fileURLToPath(new URL(asset,root)));});
 }
 app.use(publicPages);

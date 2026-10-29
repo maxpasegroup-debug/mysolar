@@ -41,7 +41,7 @@ emailRegistration.post('/register/confirm',csrf,async(req,res)=>{
   if(!row||row.used_at||row.attempts>=5||Date.parse(row.expires_at)<=Date.now()||row.session_hash!==req.session.token_hash)return null;
   if(!safeEqual(row.code_hash,privateDigest('signup:'+id+':'+input.otp))){await db.query('UPDATE registration_challenges SET attempts=attempts+1 WHERE id=$1',[id]);await audit(db,{action:'auth.signup_code_rejected'});return null;}
   if((await db.query('SELECT 1 FROM users WHERE lower(email)=$1',[row.email])).rowCount)throw unavailable();
-  const context=unseal(row.context),type=accountType(context.accountType),invited=await validateInvitation(db,context.invitationToken,row.email);if(invited&&invited!==type)throw invalid();
+  const context=unseal(row.context);if(context.flow==='business_email_first')throw invalid();const type=accountType(context.accountType),invited=await validateInvitation(db,context.invitationToken,row.email);if(invited&&invited!==type)throw invalid();
   const userId=await createIdentity(db,{name:context.name,email:row.email,passwordHash:context.passwordHash,accountType:type,emailVerified:true});
   await db.query('UPDATE registration_challenges SET used_at=now(),context=NULL WHERE id=$1',[id]);
   await audit(db,{actor:userId,action:'auth.signup_email_verified'});return issueSession(db,userId,req.session.token_hash);

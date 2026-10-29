@@ -1,3 +1,4 @@
+import {queueTrialReminders} from '../commercial/trial-reminders.js';
 import {quotationStaffAccess,quotationCustomer} from './quotation-scope.js';
 import {config} from '../config.js';
 import {enqueueMail} from '../mail-queue.js';
@@ -90,7 +91,7 @@ export async function tick({run=transaction,limit=50,deliveryOptions}={}){
  await run(db=>db.query("INSERT INTO automation_worker_state(worker,last_started_at,last_status) VALUES('reminders',now(),'running') ON CONFLICT(worker) DO UPDATE SET last_started_at=now(),last_status='running'"));
  try{
   const ids=await run(async db=>(await db.query('SELECT id FROM automation_rules WHERE enabled ORDER BY last_planned_at NULLS FIRST,id LIMIT 20')).rows);
-  let planned=0;for(const row of ids)planned+=await run(db=>planRule(db,row.id));
+  let planned=await run(queueTrialReminders);for(const row of ids)planned+=await run(db=>planRule(db,row.id));
   let processed=0;for(;processed<limit;processed++){const job=await run(claim);if(!job)break;try{await run(db=>deliver(db,job,deliveryOptions));}catch{await run(db=>fail(db,job));}}
   await run(db=>db.query("UPDATE automation_worker_state SET last_finished_at=now(),last_status='ok' WHERE worker='reminders'"));return {planned,processed};
  }catch(error){try{await run(db=>db.query("UPDATE automation_worker_state SET last_finished_at=now(),last_status='failed' WHERE worker='reminders'"));}catch{}throw error;}

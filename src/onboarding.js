@@ -21,6 +21,7 @@ const Onboarding = (() => {
     dialog.animate([{opacity:0,transform:'translateY(12px) scale(.985)'},{opacity:1,transform:'none'}],{duration:220,easing:'cubic-bezier(.2,.7,.2,1)'});
   }
   function open(mode,focusTarget) {
+    if(mode==='distributor'&&window.BusinessOnboarding){if(busy||closing)return;version++;if(dialog?.open)dialog.close();if(dialog)dialog.innerHTML='';document.body.classList.remove('ob-modal-open');BusinessOnboarding.open(focusTarget||returnFocus);return;}
     if(!content[mode]||busy||!dialog)return;
     if(Account.user){Account.navigate(mode==='distributor'?'/distributor/onboarding':Journey.destination()||'/customer/dashboard');return;}
     version++;
@@ -127,5 +128,5 @@ const Onboarding = (() => {
       }
     },{signal});
   }
-  return {markup,mount,open,cleanup,isOpen:()=>Boolean(dialog?.open)};
+  return {markup,mount,open,cleanup,isOpen:()=>Boolean(dialog?.open||window.BusinessOnboarding?.isOpen())};
 })();

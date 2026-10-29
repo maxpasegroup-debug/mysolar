@@ -1,3 +1,5 @@
+import {businessSignup} from './business-signup.js';
+import {osAccess} from '../commercial/os-access.js';
 import {emailRegistration} from './email-registration.js';
 import {accountType} from './account-type.js';
 import { Router } from 'express';
@@ -30,6 +32,7 @@ async function sessionView(req) {
       FROM company_memberships m JOIN companies c ON c.id=m.company_id JOIN roles r ON r.id=m.role_id LEFT JOIN company_profiles cp ON cp.company_id=c.id LEFT JOIN company_role_profiles p ON p.id=m.role_profile_id AND p.company_id=m.company_id LEFT JOIN company_branding b ON b.company_id=c.id
       WHERE m.user_id=$1 AND m.status='active' AND (c.status='active' OR m.role_id='owner') ORDER BY c.name,c.id`,[user.id]);
     const activeCompany = memberships.rows.find(row => row.id === user.active_company_id) || null;
+    if(activeCompany)activeCompany.osAccess=await osAccess(db,activeCompany.id);
     if (!activeCompany && user.active_company_id) await db.query('UPDATE sessions SET active_company_id=NULL WHERE token_hash=$1',[req.session.token_hash]);
     const admin = await db.query('SELECT role_id FROM platform_admin_grants WHERE user_id=$1',[user.id]);
     return {
@@ -50,6 +53,7 @@ auth.get('/session',async(req,res)=>{
   res.json(await sessionView(req));
 });
 auth.use(emailRegistration);
+auth.use(businessSignup);
 
 auth.post('/login',csrf,async(req,res)=>{
   await limit(req,'login-ip',req.ip,20);

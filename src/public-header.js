@@ -118,7 +118,7 @@ const PublicHeader = (() => {
     const focusable = root => [...root.querySelectorAll('a[href],button,select,summary,[data-ds-belt]')].filter(node => !node.disabled && node.getClientRects().length && !node.closest('[hidden]'));
     document.addEventListener('click', event => {
       const choice=event.target.closest('[data-onboarding]');
-      if(choice&&!Account.user){event.preventDefault();closeJourney();Onboarding.open(choice.dataset.onboarding,opener);return;}
+      if(choice&&(!Account.user||choice.dataset.onboarding==='distributor')){event.preventDefault();closeJourney();Onboarding.open(choice.dataset.onboarding,opener);return;}
       const trigger = event.target.closest('[data-ph-group]');
       if (trigger) { toggleGroup(trigger); return; }
       if (event.target.closest('[data-ph-mobile]')) { setMobile(!mobile); return; }

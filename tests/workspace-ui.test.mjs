@@ -25,3 +25,15 @@ test('preset emphasis never removes authorized tools',()=>{const w=workspace();a
 test('dealer defaults and legacy type fallback are resumable',()=>{const w=workspace();assert.equal(w.currentPreset({profile:{business_type:'distributor',business_preset:'dealer'}}),'dealer');assert.equal(w.currentPreset({profile:{business_type:'installer',business_preset:null}}),'installer');});
 
 test('preset menus retain other authorized tools and never introduce unauthorized links',()=>{for(const preset of ['distributor','dealer','installer','both']){const html=workspace(['company.setup.read'],preset).navigationMarkup('/distributor/dashboard');assert.match(html,/#\/distributor\/projects/);assert.match(html,/#\/distributor\/inventory/);assert.equal((html.match(/href="#\/distributor\/inventory"/g)||[]).length,1);if(preset!=='both')assert.match(html,/Other permitted tools/);assert.doesNotMatch(workspace([],preset).navigationMarkup('/distributor/dashboard'),/#\/distributor\/inventory|#\/distributor\/accounts/);}});
+
+test('branded web offer shows the approved setup price and real consultation without checkout',()=>{
+ const html=workspace().brandedOffer({name:'Company & Sons'});
+ for(const copy of ['35,000','applicable GST','WEB ONLY','Your brand name','Your own domain','A custom landing page'])assert.ok(html.includes(copy),copy);
+ assert.equal((html.match(/<article /g)||[]).length,3);
+ assert.match(html,/does not transfer ownership/);
+ assert.match(html,/does not activate a service or collect payment/);
+ assert.doesNotMatch(html,/<form|data-ba-checkout|Pay now/i);
+ const draft=new URL(html.match(/href="([^"]+)"/)[1]).searchParams.get('text');
+ assert.match(draft,/Company & Sons/);assert.match(draft,/35,000 plus applicable GST/);
+ assert.match(html,/does not submit or record a request/);
+});

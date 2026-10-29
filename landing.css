@@ -21,8 +21,7 @@
 .lp-cloud-bed{position:absolute;inset:0;z-index:3;overflow:hidden;pointer-events:none}
 .lp-bed-cloud{position:absolute;width:var(--lp-cloud-w,60%);height:auto;max-width:none;pointer-events:none}
 .lp-cloud-veil{--lp-cloud-open:0;position:absolute;inset:0;z-index:8;overflow:hidden;pointer-events:none}
-.lp-cloud-veil:before{content:'';position:absolute;inset:0;background:#f4f7f8;opacity:calc(1 - var(--lp-cloud-open))}
-.lp-cloud{position:absolute;width:auto;height:115%;max-width:none;pointer-events:none;will-change:transform}
+.lp-cloud{position:absolute;width:var(--lp-cloud-w,42%);height:auto;max-width:none;pointer-events:none;will-change:transform}
 .lp-hero-copy{position:absolute;inset:0;z-index:6;pointer-events:none}
 .lp-hero h1.lp-hero-mark{position:absolute;left:-1%;right:-1%;top:15%;margin:0;text-align:center;white-space:nowrap;font-size:clamp(76px,16.2vw,268px);font-weight:700;letter-spacing:-.055em;line-height:.78;color:transparent;background:linear-gradient(180deg,rgba(255,255,255,.98) 0%,rgba(255,255,255,.72) 46%,rgba(255,255,255,.2) 100%);-webkit-background-clip:text;background-clip:text}
 .lp-hero.lp-hero-stage .lp-hero-sub{position:absolute;left:0;right:0;top:39%;margin:0;max-width:none;text-align:center;white-space:nowrap;color:#16324a;font-size:clamp(18px,2vw,30px);font-weight:560;line-height:1.2;letter-spacing:-.4px;text-shadow:0 1px 0 rgba(255,255,255,.85),0 8px 18px rgba(255,255,255,.75)}
@@ -36,11 +35,13 @@
 .lp-hero-island{width:min(820px,94vw);bottom:-2%}
 }
 @media(max-width:720px){
-.lp-hero.lp-hero-stage{height:calc(100svh - 74px + 110vh)}
+.lp-hero.lp-hero-stage{height:calc(100svh - 74px)}
 .lp-hero-pin{top:74px;height:calc(100svh - 74px)}
-.lp-hero h1.lp-hero-mark{top:11%;font-size:clamp(40px,12.4vw,68px);letter-spacing:-.04em}
-.lp-hero.lp-hero-stage .lp-hero-sub{top:24%;font-size:clamp(13px,3.4vw,18px)}
-.lp-hero-island{width:min(560px,120vw);bottom:0}
+.lp-hero-copy{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 4vw 24vh}
+.lp-hero h1.lp-hero-mark{position:static;width:100%;font-size:19.6vw;letter-spacing:-.065em;line-height:.82}
+.lp-hero.lp-hero-stage .lp-hero-sub{position:static;width:100%;margin-top:0;padding-inline:2vw;font-size:4.1vw;line-height:1.15;white-space:nowrap}
+.lp-hero-island{width:124vw;bottom:4%}
+.lp-cloud-veil{display:none}
 }
 @media(prefers-reduced-motion:reduce){
 .lp-cloud-veil{display:none}

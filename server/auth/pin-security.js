@@ -13,7 +13,7 @@ export function mobileNumber(value,countryCode=''){
   const calling=countryCode.slice(1);
   if(digits.startsWith(calling)&&value.trim().startsWith('+'))digits=digits.slice(calling.length);
   if(digits.length<4||digits.length>14||digits.startsWith('0'))throw badInput('Enter a valid mobile number without the country calling code.');
-  return '+'+calling+digits;
+  const number='+'+calling+digits;if(number.length>16)throw badInput('Enter a mobile number with no more than 15 digits after the plus sign.');return number;
  }
  if(value.trim().startsWith('+')){
   if(digits.length<8||digits.length>15||digits.startsWith('0'))throw badInput('Enter a valid international mobile number.');

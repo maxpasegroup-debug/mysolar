@@ -127,7 +127,7 @@ window.Account = (() => {
     if(['/platform/locations','/platform/mail','/platform/operations','/platform/white-label-requests','/platform/costs'].includes(p))return ReleaseTools.page(p);
     if(p==='/platform/razorpay')return (state.platformPermissions||[]).includes('platform.commercial.read')?BusinessAccess.page(p):problem('Platform commercial access required.');
     if(p.startsWith('/platform')){const commercialPage=Commercial.page(p);if(commercialPage!==null)return commercialPage;const marketplacePage=Marketplace.page(p);return marketplacePage===null?Organization.page(p):marketplacePage;}
-    if(p==='/distributor/dashboard'&&!state.activeCompany)return SiaWelcome.business();
+    if(p==='/distributor/dashboard'&&!state.activeCompany)return new URLSearchParams(location.hash.split('?')[1]||'').get('setup')==='1'?SiaWelcome.setup():SiaWelcome.business();
     if(!p.startsWith('/customer/')&&!state.activeCompany)return companyPicker();
     if(!navAllowed(p))return problem('Your company role does not grant access to this screen.');
     if(window.BusinessAccess){const accessPage=BusinessAccess.page(p);if(accessPage!==null)return accessPage;}
@@ -155,12 +155,12 @@ window.Account = (() => {
     if(!state.csrfToken)await refresh({preserveForm:true,deferRender:true});
       if(!state.csrfToken)throw new Error(state.error||'Your security session is unavailable. Refresh the page before continuing.');
     const accountType=Organization.hasInvitation()&&Organization.registrationAccountType?Organization.registrationAccountType():audience==='distributor'?'business':'customer';
-    if(data.mobile&&!data.challenge){const result=await api('/auth/pin/register/request','POST',{name:data.name,email:data.email,mobile:data.mobile,countryCode:data.countryCode||'+91',accountType,...(Organization.registrationToken?.()?{invitationToken:Organization.registrationToken()}: {})});return {...result,pending:true,accountType};}
+    if(data.mobile&&!data.challenge){const result=await api('/auth/pin/register/request','POST',{name:data.name,email:data.email,mobile:data.mobile,countryCode:data.countryCode||'+91',accountType,...(data.previousChallenge?{previousChallenge:data.previousChallenge}:{}),...(data.referralCode?{referralCode:data.referralCode}:{}),...(Organization.registrationToken?.()?{invitationToken:Organization.registrationToken()}: {})});return {...result,pending:true,accountType};}
     if(data.challenge){if(data.pin){await api('/auth/pin/register/confirm','POST',{challenge:data.challenge,otp:data.otp,pin:data.pin,legalConsent:LegalConsent.payload(data,accountType)});MobileAuth.useMobile();}else {await api('/auth/register/confirm','POST',{challenge:data.challenge,otp:data.otp,legalConsent:LegalConsent.payload(data,accountType)});MobileAuth.useEmail();}}
     else {const result=await api('/auth/register','POST',{name:data.name,email:data.email,password:data.password,accountType,...(Organization.registrationToken?.()?{invitationToken:Organization.registrationToken()}: {})});return {...result,pending:true,emailSignup:true,accountType,email:data.email};}
     await refresh({...options,deferRender:options.deferRender&&Boolean(document.querySelector('[data-onboarding-form]'))});
     const signedIn=Boolean(state.user)&&!state.error;
-    const next=signedIn?(Organization.hasInvitation()?'/invitation':audience==='distributor'?'/distributor/dashboard':'/customer/dashboard'):
+    const next=signedIn?(Organization.hasInvitation()?'/invitation':audience==='distributor'?state.activeCompany?'/distributor/dashboard':'/distributor/dashboard?setup=1':'/customer/dashboard'):
       audience==='distributor'?'/distributor/login?journey=distributor':Journey.authPath('/customer/login');
     return {created:true,signedIn,next};
   }
@@ -188,7 +188,7 @@ window.Account = (() => {
       else if(f.id==='account-password-code-confirm'){if(data.password!==data.confirmPassword)throw new Error('The passwords do not match.');const result=await api('/auth/password-reset/confirm','POST',{challenge:passwordChallenge,otp:data.otp,password:data.password});passwordChallenge=null;f.reset();await refresh();flash=result.message;navigate(recoveryPurpose==='business'?'/distributor/login':'/customer/login');}
       else if(f.id==='account-recover'){data.accountType=data.accountType||'customer';const result=await api('/auth/recover','POST',data);flash=result.message;render();}
       else if(f.id==='account-reset'){const result=await api('/auth/reset-password','POST',{...data,token:resetToken});resetToken='';await refresh();flash=result.message;navigate('/customer/login');}
-      else if(f.id==='account-company-create'){const location=CompanyLocation.values(f),workspacePlan=SiaCompanySetup.values(f);const payload={operationKey:data.operationKey,name:data.name,email:data.email,phone:workspacePlan.emergencyContact,...location,city:data.city?.trim()||location.district,businessPreset:Workspace.selectedPreset(f),businessType:Workspace.selectedBusinessType(f),workspacePlan};await api('/companies','POST',payload);await refresh();navigate('/distributor/dashboard');}
+      else if(f.id==='account-company-create'){const location=CompanyLocation.values(f),workspacePlan=SiaCompanySetup.values(f),publicListing=workspacePlan.publicListing;delete workspacePlan.publicListing;const payload={operationKey:data.operationKey,name:data.name,email:data.email,phone:workspacePlan.emergencyContact,...location,city:data.city?.trim()||location.district,businessPreset:Workspace.selectedPreset(f),businessType:Workspace.selectedBusinessType(f),workspacePlan,publicListing};await api('/companies','POST',payload);await refresh();navigate('/distributor/dashboard');}
       else if(f.id==='account-profile'){const result=await api('/customer/profile','PATCH',data);await refresh();flash=result.message;locale=data.language;render();}
       else if(f.id==='account-company-profile'){data.published=f.elements.published.checked;const result=await api('/companies/current','PATCH',data);await refresh();flash=result.message;render();}
       else if(f.id==='account-member-add'){const result=await api('/companies/current/members','POST',data);await refresh();flash=result.message;render();}

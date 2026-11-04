@@ -9,11 +9,12 @@ const Onboarding = (() => {
   const submitLabel = form => form?.elements.challenge?'Verify email and create account':content[audience].submit;
   const markup = () => '<dialog id="onboarding-dialog" class="ob-dialog" aria-labelledby="ob-title" aria-describedby="ob-intro"></dialog>';
   function fields() {
-    return `<label for="ob-name">Your name<input id="ob-name" name="name" autocomplete="name" maxlength="100" required aria-describedby="ob-name-error"><small id="ob-name-error" class="ob-field-error"></small></label><label for="ob-email">Email address<input id="ob-email" name="email" type="email" autocomplete="email" maxlength="254" required aria-describedby="ob-email-error"><small id="ob-email-error" class="ob-field-error"></small></label><label for="ob-mobile">Country calling code and mobile number<span class="ob-phone-control"><input id="ob-country-code" name="countryCode" type="tel" value="+91" inputmode="tel" pattern="\\+[1-9][0-9]{0,2}" maxlength="4" aria-label="Country calling code" required><input id="ob-mobile" name="mobile" type="tel" autocomplete="tel-national" inputmode="tel" maxlength="18" placeholder="Mobile number" required aria-label="Mobile number"></span><small class="ob-hint">Email verification is used for account checks. No SMS code will be sent. Each account needs its own email and mobile number.</small><small id="ob-mobile-error" class="ob-field-error"></small></label>`;
+    const referralCode=new URLSearchParams(location.hash.split('?')[1]||location.search.slice(1)).get('ref')||'';
+    return `<label for="ob-name">Your name<input id="ob-name" name="name" autocomplete="name" maxlength="100" required aria-describedby="ob-name-error"><small id="ob-name-error" class="ob-field-error"></small></label><label for="ob-country-code">Mobile number<span class="ob-phone-control"><input id="ob-country-code" name="countryCode" type="tel" value="+91" inputmode="tel" pattern="\\+[1-9][0-9]{0,2}" maxlength="4" aria-label="Country calling code" required><input id="ob-mobile" name="mobile" type="tel" autocomplete="tel-national" inputmode="tel" maxlength="18" placeholder="Your mobile number" required aria-label="Mobile number"></span><small class="ob-hint">Country code starts at +91. Change it if you use another country code.</small><small id="ob-mobile-error" class="ob-field-error"></small></label><label for="ob-email">Email address<input id="ob-email" name="email" type="email" autocomplete="email" maxlength="254" required aria-describedby="ob-email-error"><small id="ob-email-error" class="ob-field-error"></small></label>${referralCode?`<input type="hidden" name="referralCode" value="${escapeHTML(referralCode)}">`:''}<p class="ob-hint">We send your verification code by email. No SMS code is sent.</p>`;
   }
   function formMarkup(mode) {
     const c=content[mode];
-    return `<div class="ob-shell"><div class="ob-decoration" aria-hidden="true"><span class="ob-sun"></span><span class="ob-grid"></span></div><div class="ob-top"><button type="button" class="ob-back" data-ob-back>← Choose your journey</button><button type="button" class="ob-close" data-ob-close aria-label="Close onboarding">${icon('close')}</button></div><div class="ob-heading"><div class="ob-sia-guide">${SiaOrb.markup({size:'small'})}<p>SIA · ${mode==='distributor'?'Your business setup guide':'Your solar guide'}</p></div>${SiaOrb.control()}<span class="ob-badge">${icon(c.symbol)}${c.badge}</span><h2 id="ob-title" tabindex="-1">${c.heading}</h2><p id="ob-intro">${c.introduction}</p></div>${mode==='distributor'?Workspace.journey(1)+'<p class="ob-separation">One account, one company, your workspace. Choose equipment distributor, dealer / retailer, installer / EPC, or a combined business in the next step.</p>':''}<form data-onboarding-form="${mode}" novalidate>${fields()}${LegalConsent.fields(mode==='distributor'?'business':'customer')}<div id="ob-feedback" class="ob-feedback" role="alert" tabindex="-1"></div><button type="submit" class="ob-submit">${submitLabel()}${icon('arrow')}</button><p class="ob-progress" role="status" aria-live="polite"></p></form><div class="ob-links">${link(c.login(),'Already registered? Log in')}${link('/products','Explore solar first')}</div><p class="ob-boundary">${mode==='distributor'?'This creates your personal account. It does not create or approve a company or grant distributor permissions.':'Customer signup creates your personal customer profile. It grants no company or platform administration privileges.'}</p><div class="ob-switch"><span>${mode==='customer'?'Here for your solar business?':'Looking for solar for your property?'}</span><button type="button" data-ob-switch="${mode==='customer'?'distributor':'customer'}">${mode==='customer'?'Choose distributor onboarding':'Choose customer onboarding'}</button></div></div>`;
+    return `<div class="ob-shell"><div class="ob-top"><button type="button" class="ob-back" data-ob-back>← Back</button><button type="button" class="ob-close" data-ob-close aria-label="Close onboarding">${icon('close')}</button></div><div class="ob-heading"><div class="ob-sia-guide">${SiaOrb.markup({size:'small'})}<p>SIA · ${mode==='distributor'?'Business setup':'Solar guide'}</p></div><p class="ob-step-count">Step 1 of 3</p><h2 id="ob-title" tabindex="-1">Create your account</h2><p id="ob-intro">Your name, mobile number and email. We’ll guide you one step at a time.</p></div><form data-onboarding-form="${mode}" novalidate>${profile?.challenge?`<input type="hidden" name="previousChallenge" value="${escapeHTML(profile.challenge)}">`:''}${fields()}<div id="ob-feedback" class="ob-feedback" role="alert" tabindex="-1"></div><button type="submit" class="ob-submit">Continue to email code ${icon('arrow')}</button><p class="ob-progress" role="status" aria-live="polite"></p></form><div class="ob-links">${link(c.login(),'Already have an account? Sign in')}${mode==='customer'?`<button type="button" data-ob-switch="distributor">Business account</button>`:`<button type="button" data-ob-switch="customer">Customer account</button>`}</div></div>`;
   }
   function animateIn() {
     if(reduced()||!dialog.animate)return;
@@ -64,19 +65,25 @@ const Onboarding = (() => {
     dialog.querySelectorAll('button').forEach(button=>button.disabled=value);
     dialog.querySelectorAll('a').forEach(anchor=>{anchor.inert=value;});
     const confirming=Boolean(form.elements.challenge);
-    const pendingLabel=confirming?'Verifying your email...':'Requesting your email code...';
+    const pendingLabel=form.dataset.signupStep==='email-code'?'Checking your email code...':form.dataset.signupStep==='pin'?'Creating your account securely...':confirming?'Verifying your email...':'Requesting your email code...';
     form.querySelector('.ob-submit').innerHTML=value?'<span class="ob-spinner" aria-hidden="true"></span>'+pendingLabel:submitLabel(form)+icon('arrow');
-    form.querySelector('.ob-progress').textContent=value?(confirming?'Verifying your code and creating your account securely.':'Requesting email verification. Your account is not created yet.'):'';
+    form.querySelector('.ob-progress').textContent=value?pendingLabel:'';
   }
   async function submit(form) {
     if(busy||closing||success||!validate(form))return;
     const epoch=version, mode=audience;
     form.querySelector('#ob-feedback').textContent='';
     setBusy(form,true);SiaOrb.setState(dialog,'working');
-    const values=Object.fromEntries(new FormData(form));if(values.email){expectedEmail=values.email.trim().toLowerCase();profile={name:values.name,email:values.email,countryCode:values.countryCode,mobile:values.mobile};}
+    const values=Object.fromEntries(new FormData(form));
     try {
+      if(form.dataset.signupStep==='email-code'){
+        const result=await Account.api('/auth/pin/register/verify','POST',{challenge:values.challenge,otp:values.otp});
+        if(epoch!==version||!dialog?.isConnected)return;setBusy(form,false);SiaOrb.setState(dialog,'guiding');MobileAuth.pinSetup(form,{challenge:values.challenge,accountType:mode==='distributor'?'business':'customer',message:result.message});return;
+      }
+      if(form.dataset.signupStep==='pin'&&values.pin!==values.pinConfirm)throw new Error('Those PINs do not match. Enter the same six digits twice.');
+      if(values.email){expectedEmail=values.email.trim().toLowerCase();profile={...profile,name:values.name,email:values.email,countryCode:values.countryCode,mobile:values.mobile,challenge:values.previousChallenge||profile?.challenge||''};}
       const result=await content[mode].register(values);
-      if(result.pending){if(epoch!==version||!dialog?.isConnected)return;setBusy(form,false);SiaOrb.setState(dialog,'guiding');(result.emailSignup?MobileAuth.requestEmailConfirmation:MobileAuth.requestConfirmation)(form,result);return;}
+      if(result.pending){if(epoch!==version||!dialog?.isConnected)return;profile={...profile,challenge:result.challenge};setBusy(form,false);SiaOrb.setState(dialog,'guiding');(result.emailSignup?MobileAuth.requestEmailConfirmation:MobileAuth.requestConfirmation)(form,result);return;}
       if(epoch!==version||!dialog?.isConnected)return;
       setBusy(form,false);
       if(result.signedIn&&Account.user?.email?.toLowerCase()!==expectedEmail)throw new Error('Your signed-in account changed. Close this form and continue with the correct account.');
@@ -131,7 +138,7 @@ const Onboarding = (() => {
     },{signal});
   }
   function sessionChanged(previous,next){if(!dialog?.open||previous.user?.id===next.user?.id)return;if(busy&&next.user?.email?.toLowerCase()===expectedEmail&&next.user.accountType===(Organization.hasInvitation()&&Organization.registrationAccountType?Organization.registrationAccountType():audience==='distributor'?'business':'customer'))return;cleanup();}
-  function restart(){const saved=profile;open(audience);if(saved&&dialog){for(const [key,value] of Object.entries(saved))if(dialog.querySelector(`[name="${key}"]`))dialog.querySelector(`[name="${key}"]`).value=value;dialog.querySelector('[name=mobile]')?.focus();}}
+  function restart(){const saved=profile;open(audience);if(saved&&dialog){profile=saved;if(saved.challenge&&!dialog.querySelector('[name=previousChallenge]'))dialog.querySelector('form')?.insertAdjacentHTML('afterbegin',`<input type="hidden" name="previousChallenge" value="${escapeHTML(saved.challenge)}">`);for(const [key,value] of Object.entries(saved))if(dialog.querySelector(`[name="${key}"]`))dialog.querySelector(`[name="${key}"]`).value=value;dialog.querySelector('[name=email]')?.focus();}}
   function isOpen(){if(dialog&&!dialog.isConnected){cleanup();return false;}return Boolean(dialog?.open);}
-  return {markup,mount,open,cleanup,sessionChanged,restart,isOpen};
+  return {markup,mount,open,cleanup,sessionChanged,restart,isOpen,email:()=>profile?.email||''};
 })();

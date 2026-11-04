@@ -16,6 +16,7 @@ import { HttpError, badInput } from '../errors.js';
 import * as v from '../validation.js';
 import { editable,markChanged } from '../setup/service.js';
 import {completePrivateDraft} from '../auth/setup-draft.js';
+import {publicListing as validatePublicListing} from '../setup/validation.js';
 import { teamCapacity } from '../commercial/policy.js';
 import {requireStaffEntitlement,PART_TIME_ROLE} from '../commercial/growth.js';
 export const companies=Router();
@@ -29,14 +30,15 @@ companies.get('/setup-options',async(req,res)=>{
 });
 companies.post('/',async(req,res)=>{
   await limit(req,'company-create',req.session.user_id,5,86400);
-  const input=v.body(req.body,['name','city','email','phone','businessType','businessPreset','countryCode','state','district','operationKey','workspacePlan'],['name','city','email','phone']);
+  const input=v.body(req.body,['name','city','email','phone','businessType','businessPreset','countryCode','state','district','operationKey','workspacePlan','publicListing'],['name','city','email','phone']);
   const workspacePlan=input.workspacePlan===undefined?null:validateSetupPlan(input.workspacePlan);
+  const publicListing=input.publicListing===undefined?null:validatePublicListing(input.publicListing);
   const location=companyLocation(input);
   const {businessType,businessPreset}=resolveBusinessPreset(input.businessType,input.businessPreset);
   const name=v.text(input.name,'company name'),city=v.text(input.city,'city'),email=v.email(input.email),phone=v.phone(input.phone);
   const result=await transaction(async db=>{
     const user=await lockedUser(db,req);requireBusiness(user);
-    const creation=await prepareCompanyCreation(db,user.id,input.operationKey,{name,city,email,phone,businessType,businessPreset,state:location?.state||'',district:location?.district||'',...(workspacePlan?{workspacePlan}:{})}),id=creation.id;
+    const creation=await prepareCompanyCreation(db,user.id,input.operationKey,{name,city,email,phone,businessType,businessPreset,state:location?.state||'',district:location?.district||'',...(workspacePlan?{workspacePlan}:{}),...(publicListing?{publicListing}:{})}),id=creation.id;
     if(creation.replayed){
       await completePrivateDraft(db,user.id,input.operationKey);
       const company=(await db.query(`SELECT ${companyFields} FROM companies WHERE id=$1`,[id])).rows[0];
@@ -47,6 +49,7 @@ companies.post('/',async(req,res)=>{
     await db.query('UPDATE company_profiles SET business_type=$1,business_preset=$3 WHERE company_id=$2',[businessType,id,businessPreset]);
     if(location)await db.query('UPDATE company_profiles SET state=$1,district=$2 WHERE company_id=$3',[location.state,location.district,id]);
     if(workspacePlan)await saveSetupPlan(db,id,user.id,workspacePlan);
+    if(publicListing){await db.query('UPDATE company_branding SET public_name=$1,logo_url=$2,description=$3 WHERE company_id=$4',[publicListing.publicName,publicListing.logoUrl,publicListing.description,id]);await db.query('UPDATE company_business_profiles SET services=$1,rooftop_available=$2,service_areas=$3,preferred_contact=$4,marketplace_requested=$5 WHERE company_id=$6',[publicListing.services,publicListing.services.includes('rooftop_installation'),publicListing.areas,publicListing.contactMethod,publicListing.marketplaceRequested,id]);await db.query('UPDATE company_onboarding SET brand_saved_at=now(),business_saved_at=now() WHERE company_id=$1',[id]);}
     // Ownership is granted only by this atomic, server-controlled creation path.
     await db.query("INSERT INTO company_memberships(id,company_id,user_id,role_id) VALUES($1,$2,$3,'owner')",[randomUUID(),id,user.id]);
     await db.query('UPDATE sessions SET active_company_id=$1 WHERE token_hash=$2',[id,req.session.token_hash]);

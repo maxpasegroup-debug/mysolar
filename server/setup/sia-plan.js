@@ -4,6 +4,7 @@ import {badInput} from '../errors.js';
 // Job titles are planning labels, never permission grants or additional owners.
 export const setupCatalogue = {
  products:[['solar_panels','Solar panels'],['inverters','Inverters'],['batteries','Batteries'],['complete_systems','Complete solar systems'],['water_heaters','Solar water heaters'],['mounting','Mounting structures'],['accessories','Cables & accessories'],['pumps','Solar pumps'],['installation','Installation & EPC'],['maintenance','Maintenance & service']],
+ services:[['solar_panels','Solar panels'],['inverters','Inverters'],['batteries','Batteries'],['rooftop_installation','Rooftop installation'],['maintenance','Maintenance'],['energy_consultation','Energy consultation']],
  departments:[
   {name:'Leadership & management',roles:[['director','Managing director','supervisor'],['operations_manager','Operations manager','supervisor']]},
   {name:'Sales & customer care',roles:[['sales_manager','Sales manager','sales'],['sales_executive','Sales executive','sales'],['telecaller','Telecaller','sales'],['customer_care','Customer care executive','sales']]},

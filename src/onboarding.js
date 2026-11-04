@@ -124,7 +124,6 @@ const Onboarding = (() => {
       if(event.target.closest('[data-ob-back]')){void close(chooseAudience);return;}
       const change=event.target.closest('[data-ob-switch]');if(change){open(change.dataset.obSwitch);return;}
       const anchor=event.target.closest('a');if(anchor?.getAttribute('href')?.startsWith('#/')){event.preventDefault();const target=anchor.getAttribute('href').slice(1);void close(()=>Account.navigate(target));return;}
-      if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)void close();}
     },{signal});
     dialog.addEventListener('cancel',event=>{event.preventDefault();if(!busy)void close();},{signal});
     document.addEventListener('keydown',event=>{if(event.key==='Escape'&&dialog?.open&&!busy){event.preventDefault();void close();}},{signal});

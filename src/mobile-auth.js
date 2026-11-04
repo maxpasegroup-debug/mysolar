@@ -40,10 +40,6 @@ window.MobileAuth=(()=>{
   }
   dialog.addEventListener('cancel',event=>{event.preventDefault();dismiss();},{signal});
   dialog.addEventListener('click',event=>{if(event.target.closest('[data-signin-close]'))dismiss();},{signal});
-  let outside=false;
-  const isOutside=event=>{const box=dialog.getBoundingClientRect();return event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom;};
-  dialog.addEventListener('pointerdown',event=>{outside=event.target===dialog&&isOutside(event);},{signal});
-  dialog.addEventListener('pointerup',event=>{if(outside&&event.target===dialog&&isOutside(event))dismiss();outside=false;},{signal});
   document.body.classList.add('auth-modal-open','lp-active');document.getElementById('main')?.classList.add('lp-main');
   dialog.showModal();
   const focus=[...dialog.querySelectorAll('input')].find(input=>input.name===signinFocus)||dialog.querySelector('input');

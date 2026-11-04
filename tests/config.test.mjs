@@ -6,6 +6,10 @@ unitEnvironment();
 const configurationModule=new URL('../server/config.js',import.meta.url).href;
 const run=overrides=>spawnSync(process.execPath,['--input-type=module','-e','import '+JSON.stringify(configurationModule)],{cwd:new URL('../',import.meta.url),env:{...process.env,...overrides},encoding:'utf8',windowsHide:true});
 test('configuration: valid isolated test settings load',()=>assert.equal(run({}).status,0));
+test('configuration: release identity uses explicit label or validated Railway commit, never arbitrary metadata',()=>{
+ const read=values=>spawnSync(process.execPath,['--input-type=module','-e','import {config} from '+JSON.stringify(configurationModule)+'; console.log(JSON.stringify(config.releaseId));'],{env:{...process.env,APP_RELEASE:'',RAILWAY_GIT_COMMIT_SHA:'',...values},encoding:'utf8',windowsHide:true});
+ const sha='a'.repeat(40);assert.equal(JSON.parse(read({RAILWAY_GIT_COMMIT_SHA:sha}).stdout),sha);assert.equal(JSON.parse(read({APP_RELEASE:'reviewed-release',RAILWAY_GIT_COMMIT_SHA:sha}).stdout),'reviewed-release');assert.equal(JSON.parse(read({RAILWAY_GIT_COMMIT_SHA:'invalid-marker'}).stdout),null);
+});
 test('configuration: mobile PIN pepper is optional but malformed secrets fail without disclosure',()=>{assert.equal(run({AUTH_PIN_PEPPER:''}).status,0);assert.equal(run({AUTH_PIN_PEPPER:'ab'.repeat(32)}).status,0);const r=run({AUTH_PIN_PEPPER:'private-pin-pepper-marker'});assert.notEqual(r.status,0);assert.match(r.stderr,/AUTH_PIN_PEPPER/);assert.doesNotMatch(r.stderr,/private-pin-pepper-marker/);});
 
 test('configuration: removed private-environment mode fails closed before startup',()=>{const r=run({STAGING_MODE:'true'});assert.notEqual(r.status,0);assert.match(r.stderr,/Legacy staging mode is unsupported/);});

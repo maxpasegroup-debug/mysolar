@@ -1,10 +1,11 @@
+// Existing-company regression fixture: migration 042 must preserve its pre-billing policy.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
 import {isolatedApp} from './helpers/isolated-app.mjs';
 
 test('isolated PostgreSQL: PRO partners, staff assignments and downgrade boundaries',{skip:!process.env.TEST_DATABASE_URL,timeout:180000},async t=>{
- const env=await isolatedApp(t),{db}=env;await env.applyMigrations(db);await env.start();
+ const env=await isolatedApp(t,{existingCompanyPolicy:true}),{db}=env;await env.applyMigrations(db);await env.start();
  const a=env.client(),b=env.client(),c=env.client(),executive=env.client(),outsider=env.client(),second=outsider;
  // Reuse the initially unrelated user for the later capacity scenario. Five
  // accounts respect the real per-IP signup limit instead of weakening it.

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { requireUser,csrf } from '../auth/sessions.js';
 import { filterCategories } from '../marketplace/service.js';
@@ -29,7 +29,9 @@ purchaseCustomer.post('/enquiries',async(req,res)=>{
   const enquiry={id,customer_id:user.id};await s.event(db,{enquiryId:id,actor:user.id,action:'submitted'});
   for(const vendor of recipients){await db.query('INSERT INTO enquiry_recipients(enquiry_id,company_id,vendor_snapshot) VALUES($1,$2,$3)',[id,vendor.id,vendor]);await s.event(db,{enquiryId:id,companyId:vendor.id,actor:user.id,action:'distributed'});await s.notify(db,enquiry,'A new customer enquiry is available.',{companyId:vendor.id});}
   if(recipients.length)await s.notify(db,enquiry,`Enquiry sent to ${recipients.length} selected distributor${recipients.length===1?'':'s'}.`);
-  return {id,message:recipients.length?'Enquiry saved and sent to the named distributors.':'Enquiry saved privately with no eligible recipients selected. Nothing was sent.'};
+  const names=recipients.map(vendor=>vendor.name);
+  const sharedContact=data.contactMethod==='email'?'your registered email address':data.contactMethod==='phone'?'your saved profile phone number':'private messages in MY SOLAR';
+  return {id,recipients:names,contactMethod:data.contactMethod,message:recipients.length?`Your request was submitted to ${names.join(', ')}. They can see your name, request, project type, location, optional details, and ${sharedContact} as the contact method.`:'Your request was saved privately. No distributor received it and no contact details were shared.'};
  }));
 });
 purchaseCustomer.get('/enquiries',async(req,res)=>{const q=input.filters(req.query);res.json(await own(req,(db,user)=>s.listEnquiries(db,q,{user})));});
@@ -45,7 +47,7 @@ purchaseCustomer.post('/enquiries/:id/messages',async(req,res)=>{
  res.json(await own(req,async(db,user)=>{const e=await s.ownEnquiry(db,user,id,true);await s.sendMessage(db,e,{companyId,actor:user.id,side:'customer',kind:'message',body});return {message:'Message saved in the private conversation.'};}));
 });
 purchaseCustomer.get('/quotations',async(req,res)=>{const q=input.filters(req.query);res.json(await own(req,(db,user)=>s.quoteList(db,q,{user}),true));});
-purchaseCustomer.get('/quotations/:id',async(req,res)=>{const id=v.uuid(req.params.id);res.json(await own(req,async(db,user)=>{const quote=await s.quoteRecord(db,id,{user});const items=await s.items(db,id);return {quote:s.customerQuote(quote),items,assistance:assistance(quote,items)};},true));});
+purchaseCustomer.get('/quotations/:id',async(req,res)=>{const id=v.uuid(req.params.id);res.json(await own(req,async(db,user)=>{const quote=await s.quoteRecord(db,id,{user}),items=await s.items(db,id);const messages=(await db.query('SELECT m.id,m.author_side,m.kind,m.body,m.created_at,u.display_name AS author_name FROM enquiry_messages m JOIN users u ON u.id=m.author_id WHERE m.enquiry_id=$1 AND m.company_id=$2 AND m.version_id=$3 ORDER BY m.created_at,m.id',[quote.enquiry_id,quote.company_id,id])).rows;const relatedOrders=(await db.query("SELECT o.id,o.reference,o.status,o.customer_confirmed_at,o.confirmed_at,o.expected_date,o.acceptance_mode FROM business_orders o JOIN company_contacts c ON c.id=o.contact_id AND c.company_id=o.company_id WHERE o.quotation_id IN (SELECT qv.id FROM quotation_versions qv WHERE qv.quotation_id=$1) AND c.user_id=$2 AND o.status<>'draft' ORDER BY o.created_at DESC,o.id LIMIT 5",[quote.quotation_id,user.id])).rows;return {quote:s.customerQuote(quote),items,assistance:assistance(quote,items),messages,relatedOrders};},true));});
 purchaseCustomer.post('/quotations/:id/actions',async(req,res)=>{
  const id=v.uuid(req.params.id);v.body(req.body,['revision','enquiryRevision','action','body']);const revision=input.revision(req.body.revision),enquiryRevision=input.revision(req.body.enquiryRevision),action=v.choice(req.body.action,['view','prefer','clarification','revision'],'quotation action'),body=paragraph(req.body.body,'message');
  res.json(await own(req,async(db,user)=>{

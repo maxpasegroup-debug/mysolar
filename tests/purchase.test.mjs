@@ -17,6 +17,7 @@ test('enquiry rules: duplicate recipients, direct fan-out and excessive recipien
 });
 test('enquiry rules: unknown quantity stays unknown; PIN, units and identity payloads are validated',()=>{
  assert.equal(input.enquiry(enquiry()).quantity,null);
+ assert.equal(input.enquiry({...enquiry(),address:''}).address,'','street address is optional; district, state and PIN identify the service area');
  for(const fields of [{pin:'000000'},{quantity:'0',unit:'unit'},{quantity:'',unit:'unit'},{customerId:ids[0]},{companyId:ids[1]}])assert.throws(()=>input.enquiry({...enquiry(),...fields}));
 });
 test('purchase workflow rules: stale revisions and closed/cancelled enquiries reject new changes',()=>{

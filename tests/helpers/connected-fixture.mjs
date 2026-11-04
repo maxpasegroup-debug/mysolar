@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {isolatedApp} from './isolated-app.mjs';
 export async function connectedFixture(t,{beforeStart,strangerAccountType='business'}={}){
- const fixture=await isolatedApp(t);await fixture.applyMigrations(fixture.db);if(beforeStart)await beforeStart(fixture);await fixture.start();
+ // This fixture represents existing companies on the preserved pre-billing policy.
+ // New enrolled companies and activation guards have dedicated trial integration tests.
+ const fixture=await isolatedApp(t,{existingCompanyPolicy:true});await fixture.applyMigrations(fixture.db);if(beforeStart)await beforeStart(fixture);await fixture.start();
  const {db}=fixture,a=fixture.client(),b=fixture.client(),customer=fixture.client(),stranger=fixture.client();
  for(const [client,name] of [[a,'journey-owner-a'],[b,'journey-owner-b'],[customer,'journey-customer'],[stranger,'journey-stranger']])await client.register(name,client===customer?'customer':client===stranger?strangerAccountType:'business');
  const companyA=await a.createCompany('journey-company-a'),companyB=await b.createCompany('journey-company-b'),product=randomUUID(),category='10000000-0000-4000-8000-000000000001';

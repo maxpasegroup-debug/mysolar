@@ -1,3 +1,5 @@
+import {setupDraft} from './setup-draft.js';
+import {publicCatalogue} from '../legal/catalogue.js';
 import {businessSignup} from './business-signup.js';
 import {osAccess} from '../commercial/os-access.js';
 import {emailRegistration} from './email-registration.js';
@@ -24,7 +26,7 @@ let dummyHash;
 
 
 async function sessionView(req) {
-  if (!req.session.user_id) return { user:null, companies:[], activeCompany:null, permissions:[], platformPermissions:[], pinAvailable:pinAvailable(),pinEmailAvailable:pinEmailAvailable(),recoveryAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey), csrfToken:csrfToken(req.sessionToken) };
+  if (!req.session.user_id) return { legal:publicCatalogue(),user:null, companies:[], activeCompany:null, permissions:[], platformPermissions:[], pinAvailable:pinAvailable(),pinEmailAvailable:pinEmailAvailable(),recoveryAvailable:config.mailEnabled&&Boolean(config.dataEncryptionKey), csrfToken:csrfToken(req.sessionToken) };
   return transaction(async db => {
     const user = await lockedUser(db,req);
     const memberships = await db.query(`SELECT c.id,c.name,c.city,c.status,c.lifecycle,cp.business_type,cp.business_preset,m.role_id AS role,coalesce(p.name,r.label) AS role_label,
@@ -36,7 +38,7 @@ async function sessionView(req) {
     if (!activeCompany && user.active_company_id) await db.query('UPDATE sessions SET active_company_id=NULL WHERE token_hash=$1',[req.session.token_hash]);
     const admin = await db.query('SELECT role_id FROM platform_admin_grants WHERE user_id=$1',[user.id]);
     return {
-      user:{id:user.id,email:user.email,name:user.display_name,accountType:user.account_type,emailVerified:Boolean(user.email_verified_at)},companies:memberships.rows,activeCompany,
+      legal:publicCatalogue(),user:{id:user.id,email:user.email,name:user.display_name,accountType:user.account_type,emailVerified:Boolean(user.email_verified_at)},companies:memberships.rows,activeCompany,
       permissions:activeCompany ? await companyPermissions(db,activeCompany.role,activeCompany.id,user.id) : [],
       customerPermissions:user.account_type==='business'?[]:await permissionsFor(db,'customer'),
       platformPermissions:admin.rowCount ? await permissionsFor(db,admin.rows[0].role_id) : [],
@@ -53,6 +55,7 @@ auth.get('/session',async(req,res)=>{
   res.json(await sessionView(req));
 });
 auth.use(emailRegistration);
+auth.use('/setup-draft',setupDraft);
 auth.use(businessSignup);
 
 auth.post('/login',csrf,async(req,res)=>{

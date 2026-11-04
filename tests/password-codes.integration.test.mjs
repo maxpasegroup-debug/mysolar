@@ -29,6 +29,9 @@ test('email password recovery codes enforce purpose, session, expiry, attempts a
   for(const mode of ['expired','exhausted','stale']){const user=env.client(),browser=env.client();await user.register('password-'+mode);await browser.session();const r=ok(await request(browser,user.user.email,'business'),202),otp=await code(r.challenge);if(mode==='expired')await db.query("UPDATE password_reset_challenges SET expires_at=now()-interval '1 second',created_at=now()-interval '20 minutes' WHERE id=$1",[r.challenge]);if(mode==='stale')await db.query("UPDATE users SET password_hash='REPLACED-FIXTURE-HASH' WHERE id=$1",[user.user.id]);if(mode==='exhausted'){for(let n=0;n<5;n++)assert.equal((await confirm(browser,r.challenge,otp==='00000000'?'11111111':'00000000')).status,400);assert.equal((await db.query('SELECT attempts FROM password_reset_challenges WHERE id=$1',[r.challenge])).rows[0].attempts,5);}assert.equal((await confirm(browser,r.challenge,otp)).status,400);}
  });
  await t.test('rate limits and strict purpose validation do not leak OTPs into logs',async()=>{
-  assert.equal((await request(unknown,'missing-password@example.invalid','customer')).status,429);assert.equal((await request(unknown,'other-password@example.invalid','owner')).status,400);const logs=JSON.stringify((await db.query("SELECT metadata FROM audit_events WHERE action LIKE 'auth.password_code%'")).rows);assert.ok(!logs.includes(co)&&!logs.includes(bo));
+  // Pin only this subtest's application clock: earlier steps may cross a minute boundary.
+  const now=Date.now(),clock=t.mock.method(Date,'now',()=>now);
+  try{assert.equal((await request(unknown,'cooldown-proof@example.invalid','customer')).status,202);assert.equal((await request(unknown,'cooldown-proof@example.invalid','customer')).status,429);}finally{clock.mock.restore();}
+  assert.equal((await request(unknown,'other-password@example.invalid','owner')).status,400);const logs=JSON.stringify((await db.query("SELECT metadata FROM audit_events WHERE action LIKE 'auth.password_code%'")).rows);assert.ok(!logs.includes(co)&&!logs.includes(bo));
  });
 });

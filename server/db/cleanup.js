@@ -1,6 +1,8 @@
 import { pool, transaction } from './pool.js';
+import {cleanupAuthChallenges} from '../auth/cleanup.js';
 try {
   await transaction(async db => {
+    await cleanupAuthChallenges(db);
     await db.query("DELETE FROM sessions WHERE expires_at < now() OR last_seen_at < now() - interval '72 hours'");
     await db.query("DELETE FROM password_reset_tokens WHERE expires_at < now() - interval '1 day' OR used_at IS NOT NULL");
     await db.query('DELETE FROM rate_limit_buckets WHERE expires_at < now()');

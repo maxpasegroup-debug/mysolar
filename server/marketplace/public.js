@@ -29,6 +29,22 @@ discovery.get('/products',async(req,res)=>{
     return {...result,categories:await filterCategories(db),locationFiltered:hasLocation(q)};
   }));
 });
+discovery.get('/compare',async(req,res)=>{
+  v.body(req.query,['ids','state','district','pin','area'],['ids']);
+  const q=input.query(req.query,['ids']),raw=req.query.ids.split(',');
+  if(raw.length<2||raw.length>3)throw new HttpError(400,'COMPARE_LIMIT','Choose two or three products to compare.');
+  const ids=raw.map(value=>v.uuid(value));if(new Set(ids).size!==ids.length)throw new HttpError(400,'COMPARE_DUPLICATE','Choose different products to compare.');
+  res.json(await transaction(async db=>{
+    const products=[];
+    for(const id of ids){
+      const product=await publishedProduct(db,id);if(product.kind!=='product')throw new HttpError(404,'NOT_FOUND','Product comparison is available for published products only.');
+      const bind=new Bindings(),where=[`o.product_id=${bind.add(id)}`];if(hasLocation(q))where.push(areaMatch(bind,q,'v.id','o.coverage_labels'));
+      const offers=(await db.query(`SELECT o.*,v.name AS vendor_name FROM marketplace_offers o JOIN marketplace_vendors v ON v.id=o.company_id WHERE ${where.join(' AND ')} ORDER BY v.name,o.id LIMIT 20`,bind.values)).rows;
+      products.push({product,offers});
+    }
+    return {products,locationFiltered:hasLocation(q),notice:'Product information and seller offers are supplied by their publishers. Prices are listing information, not a binding quotation; compare units, tax, coverage and included work.'};
+  }));
+});
 discovery.get('/products/:id',async(req,res)=>{
   const id=v.uuid(req.params.id);const q=input.query(req.query);const page=q.page;
   res.json(await transaction(async db=>{

@@ -1,10 +1,11 @@
+// Existing-company regression fixture: migration 042 must preserve its pre-billing policy.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {isolatedApp} from './helpers/isolated-app.mjs';
 
 test('practical setup and reviewed imports preserve business and authorization boundaries',{skip:!process.env.TEST_DATABASE_URL,timeout:120000},async t=>{
- const env=await isolatedApp(t),{db}=env;await env.applyMigrations(db);await env.applyMigrations(db);await env.start();
+ const env=await isolatedApp(t,{existingCompanyPolicy:true}),{db}=env;await env.applyMigrations(db);await env.applyMigrations(db);await env.start();
  const owner=env.client(),other=env.client(),employee=env.client();await owner.register('setup-owner');await other.register('setup-other');await employee.register('setup-sales');
  const id=await owner.createCompany('practical-setup'),otherId=await other.createCompany('other-setup');
  const guide=async()=>{const r=await owner.request('/companies/current/setup/guide');assert.equal(r.status,200,JSON.stringify(r.data));return r.data;};

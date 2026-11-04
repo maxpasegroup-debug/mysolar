@@ -41,6 +41,11 @@ test('marketplace discovery uses eligible offers, real prices and customer-owned
   assert.ok(!JSON.stringify(r.data).includes('PRIVATE-OFFER-COST'));
   assert.equal((await customer.request('/public/products?availability=invalid')).status,400);
  });
+ await t.test('compare returns only selected public products with their separate published offers',async()=>{
+  const second=randomUUID();await db.query("INSERT INTO catalogue_products(id,category_id,name,brand,model,unit,schema_revision,created_by,published_by,published_at,status,public_visible) VALUES($1,(SELECT id FROM catalogue_categories WHERE discovery_key='panels'),'[TEST] comparison panel','ReviewBrand','Compare-Panel','panel',1,$2,$2,now(),'published',true)",[second,a.user.id]);
+  try{const response=await customer.request('/public/compare?ids='+product+','+second);assert.equal(response.status,200);assert.equal(response.data.products.length,2);assert.equal(response.data.products[0].product.id,product);assert.equal(response.data.products[0].offers.length,2);assert.equal(response.data.products[1].product.id,second);assert.equal(response.data.products[1].offers.length,0);assert.match(response.data.notice,/compare units/i);assert.equal((await customer.request('/public/compare?ids='+product)).status,400);assert.equal((await customer.request('/public/compare?ids='+product+','+product)).status,400);}
+  finally{await db.query('DELETE FROM catalogue_products WHERE id=$1',[second]);}
+ });
  await t.test('search, category, prices and seller availability match recorded values',async()=>{
   await db.query("UPDATE distributor_offers SET price_mode='price_available',price_paise=1234500,tax_mode='exclusive',availability='in_stock' WHERE company_id=$1 AND product_id=$2",[companyA,product]);
   let r=await customer.request('/public/products?search=equipment&price=price_available&availability=in_stock&sellers=available');

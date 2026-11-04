@@ -1,3 +1,4 @@
+// Existing-company regression fixture: migration 042 must preserve its pre-billing policy.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -8,7 +9,7 @@ import {migrationManifest} from '../server/db/migrations.js';
 import {isolatedApp} from './helpers/isolated-app.mjs';
 
 test('isolated PostgreSQL: migrations 009–011 and domain security/lifecycle',{skip:!process.env.TEST_DATABASE_URL,timeout:180000},async t=>{
- const env=await isolatedApp(t),{db,schema,applyMigrations}=env;
+ const env=await isolatedApp(t,{existingCompanyPolicy:true}),{db,schema,applyMigrations}=env;
  let history;
  await t.test('008 upgrades sequentially through 009, 010 and 011 without changing historical checksums',async()=>{
   await applyMigrations(db,{through:'008_commercial.sql'});const before=(await db.query('SELECT name,checksum FROM schema_migrations ORDER BY name')).rows;

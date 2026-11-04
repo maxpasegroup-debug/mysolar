@@ -63,7 +63,7 @@ purchaseCompany.post('/quotations/:id/actions',async(req,res)=>{
    await db.query("UPDATE quotation_versions SET status='withdrawn',revision=revision+1 WHERE id=$1",[id]);
    if(e.preferred_version_id===id)await db.query("UPDATE customer_enquiries SET preferred_version_id=NULL,status=CASE WHEN status IN ('closed','cancelled') THEN status ELSE 'quotation_received' END,revision=revision+1,updated_at=now() WHERE id=$1",[e.id]);
   }
-  const label=action==='send'?(q.version>1?'quotation_revised':'quotation_issued'):'quotation_withdrawn';await quoteEvent(db,ctx,e,{enquiryId:e.id,companyId:ctx.companyId,actor:ctx.userId,action:label,versionId:id});if(!e.manual)await s.notify(db,e,label.replaceAll('_',' ')+'.',{versionId:id});return {id,message:action==='send'?(e.manual?'Quotation issued for external sharing. No email, acceptance or payment is implied.':'Quotation issued privately to the customer.'):'Quotation withdrawn. Its history is retained.'};
+  const label=action==='send'?(q.version>1?'quotation_revised':'quotation_issued'):'quotation_withdrawn';await quoteEvent(db,ctx,e,{enquiryId:e.id,companyId:ctx.companyId,actor:ctx.userId,action:label,versionId:id});if(!e.manual)await s.notify(db,e,action==='send'?(q.version>1?'A revised quotation is ready for you to review.':'A new quotation is ready for you to review.'):'A quotation was withdrawn. Open your request for details.',{versionId:id});return {id,message:action==='send'?(e.manual?'Quotation issued for external sharing. No email, acceptance or payment is implied.':'Quotation issued privately to the customer.'):'Quotation withdrawn. Its history is retained.'};
  }));
 });
 

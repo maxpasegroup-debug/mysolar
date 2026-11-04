@@ -9,6 +9,7 @@ import {limit,privateDigest,safeEqual,hashPassword} from './security.js';
 import {seal,unseal} from './sealed.js';
 import {accountType} from './account-type.js';
 import {createIdentity,validateInvitation} from './registration.js';
+import {signupDeliveryMessage} from './business-signup.js';
 import {HttpError} from '../errors.js';
 import * as v from '../validation.js';
 
@@ -17,6 +18,12 @@ const unavailable=()=>new HttpError(409,'EMAIL_UNAVAILABLE','This email is alrea
 const invalid=()=>new HttpError(400,'INVALID_SIGNUP_CODE','This code is invalid, expired or no longer available. Request a new code in this browser.');
 function ready(req){if(req.session.user_id)throw new HttpError(409,'ALREADY_SIGNED_IN','Sign out before creating another account.');if(!mailTransport||!config.dataEncryptionKey)throw new HttpError(503,'SIGNUP_EMAIL_UNAVAILABLE','Signup verification email is unavailable. No account was created. Please try again later or contact support.');}
 async function emailLock(db,email){await db.query('SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))',['verified-signup',email]);}
+emailRegistration.get('/register/status',async(req,res)=>{
+ if(!req.session||req.session.user_id)throw invalid();v.body(req.query,['challenge']);const id=v.uuid(req.query.challenge);
+ await limit(req,'signup-delivery-status',req.session.token_hash,30,60);
+ const row=(await pool.query('SELECT id FROM registration_challenges WHERE id=$1 AND session_hash=$2 AND used_at IS NULL AND expires_at>now() AND attempts<5',[id,req.session.token_hash])).rows[0];if(!row)throw invalid();
+ const job=(await pool.query("SELECT status FROM mail_jobs WHERE kind='registration_otp' AND reference_hash=$1 ORDER BY created_at DESC LIMIT 1",[id])).rows[0];res.json({state:job?.status||'unknown',message:signupDeliveryMessage(job?.status)});
+});
 emailRegistration.post('/register',csrf,async(req,res)=>{
  const input=v.body(req.body,['name','email','password','accountType','invitationToken'],['name','email','password']);
  const name=v.text(input.name,'name',100),email=v.email(input.email),password=v.password(input.password);ready(req);
@@ -33,7 +40,7 @@ emailRegistration.post('/register',csrf,async(req,res)=>{
  });res.status(202).json({challenge,message:'Verification email queued. Enter the eight-digit code to create your account. Check Spam too. Inbox delivery is not yet confirmed.'});
 });
 emailRegistration.post('/register/confirm',csrf,async(req,res)=>{
- ready(req);const input=v.body(req.body,['challenge','otp']),id=v.uuid(input.challenge);if(typeof input.otp!=='string'||!/^\d{8}$/.test(input.otp))throw invalid();
+ ready(req);const input=v.body(req.body,['challenge','otp','legalConsent'],['challenge','otp']),id=v.uuid(input.challenge);if(typeof input.otp!=='string'||!/^\d{8}$/.test(input.otp))throw invalid();
  await limit(req,'email-signup-confirm-ip',req.ip,20,900);await limit(req,'email-signup-confirm-challenge',id,10,900);
  let issued;try{issued=await transaction(async db=>{
   const lookup=(await db.query('SELECT email FROM registration_challenges WHERE id=$1',[id])).rows[0];if(!lookup)return null;
@@ -42,7 +49,7 @@ emailRegistration.post('/register/confirm',csrf,async(req,res)=>{
   if(!safeEqual(row.code_hash,privateDigest('signup:'+id+':'+input.otp))){await db.query('UPDATE registration_challenges SET attempts=attempts+1 WHERE id=$1',[id]);await audit(db,{action:'auth.signup_code_rejected'});return null;}
   if((await db.query('SELECT 1 FROM users WHERE lower(email)=$1',[row.email])).rowCount)throw unavailable();
   const context=unseal(row.context);if(context.flow==='business_email_first')throw invalid();const type=accountType(context.accountType),invited=await validateInvitation(db,context.invitationToken,row.email);if(invited&&invited!==type)throw invalid();
-  const userId=await createIdentity(db,{name:context.name,email:row.email,passwordHash:context.passwordHash,accountType:type,emailVerified:true});
+  const userId=await createIdentity(db,{name:context.name,email:row.email,passwordHash:context.passwordHash,accountType:type,emailVerified:true,legalConsent:input.legalConsent});
   await db.query('UPDATE registration_challenges SET used_at=now(),context=NULL WHERE id=$1',[id]);
   await audit(db,{actor:userId,action:'auth.signup_email_verified'});return issueSession(db,userId,req.session.token_hash);
  });}catch(error){if(error.code==='23505')throw unavailable();throw error;}

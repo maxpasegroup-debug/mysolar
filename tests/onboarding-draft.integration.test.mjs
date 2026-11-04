@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {isolatedApp} from './helpers/isolated-app.mjs';
+test('private company setup is resumable, encrypted, revision checked and cannot grant company access',{skip:!process.env.TEST_DATABASE_URL,timeout:120000},async t=>{
+ const env=await isolatedApp(t);await env.applyMigrations(env.db);await env.start();const a=env.client(),b=env.client(),customer=env.client(),anon=env.client();await a.register('draft-boss');await b.register('draft-other');await customer.register('draft-customer','customer');await anon.session();
+ assert.equal((await anon.request('/auth/setup-draft')).status,401);assert.equal((await customer.request('/auth/setup-draft')).status,403);
+ assert.equal((await a.request('/auth/setup-draft')).data.draft,null);
+ const draft={fields:{name:'[TEST] Private draft company',email:'draft@example.invalid',operationKey:randomUUID(),state:'Kerala',district:'Kozhikode'},step:1,products:['solar_panels'],team:[{role:'telecaller',count:2}]};
+ assert.equal((await a.request('/auth/setup-draft','PUT',{revision:null,draft},{'X-CSRF-Token':'wrong'})).status,403);
+ const result=await a.request('/auth/setup-draft','PUT',{revision:null,draft});assert.equal(result.status,200,JSON.stringify(result.data));assert.match(result.data.revision,/^\d+$/);
+ assert.deepEqual((await a.request('/auth/setup-draft')).data.draft,draft);assert.equal((await b.request('/auth/setup-draft')).data.draft,null);
+ assert.equal((await a.request('/auth/setup-draft','PUT',{revision:null,draft})).status,409);
+ const changed={...draft,fields:{...draft.fields,name:'[TEST] Revised draft'}};const writes=await Promise.all([a.request('/auth/setup-draft','PUT',{revision:result.data.revision,draft:changed}),a.request('/auth/setup-draft','PUT',{revision:result.data.revision,draft})]);assert.deepEqual(writes.map(r=>r.status).sort(),[200,409]);
+ assert.equal((await a.request('/auth/setup-draft','PUT',{revision:null,draft:{...draft,fields:{password:'Never store this'}}})).status,400);
+ const stored=(await env.db.query("SELECT metadata FROM audit_events WHERE action='onboarding.private_draft'")).rows;assert.ok(stored.length);assert.ok(stored.every(r=>!JSON.stringify(r).includes('Private draft company')));
+ assert.equal((await env.db.query('SELECT count(*)::int AS n FROM companies')).rows[0].n,0);assert.equal((await env.db.query('SELECT count(*)::int AS n FROM company_subscriptions')).rows[0].n,0);assert.equal((await env.db.query('SELECT count(*)::int AS n FROM company_memberships')).rows[0].n,0);
+ const payload={name:'[TEST] Confirmed company',email:'company@example.invalid',phone:'',city:'Kochi',operationKey:draft.fields.operationKey};assert.equal((await a.request('/companies','POST',payload)).status,201);assert.equal((await a.request('/auth/setup-draft')).data.draft,null);
+ const empty=await a.request('/auth/setup-draft'),next={...draft,fields:{...draft.fields,operationKey:randomUUID()}};assert.equal((await a.request('/auth/setup-draft','PUT',{revision:empty.data.revision,draft:next})).status,200);
+ assert.equal((await a.request('/companies','POST',payload)).status,200);assert.equal((await a.request('/auth/setup-draft')).data.draft.fields.operationKey,next.fields.operationKey);assert.equal((await env.db.query('SELECT count(*)::int AS n FROM companies')).rows[0].n,1);
+});

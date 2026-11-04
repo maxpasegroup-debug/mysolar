@@ -1,3 +1,4 @@
+import {registerAcceptance} from '../legal/service.js';
 import {randomUUID} from 'node:crypto';
 import {audit} from '../db/pool.js';
 import {digest} from './security.js';
@@ -11,9 +12,10 @@ export async function validateInvitation(db,token,email){
  const result=await db.query(`SELECT i.account_type FROM (SELECT 'business'::text AS account_type,company_id,email,invited_by,expires_at,status FROM company_invitations WHERE token_hash=$1 UNION ALL SELECT 'customer'::text AS account_type,company_id,email,invited_by,expires_at,status FROM customer_access_invitations WHERE token_hash=$1) i JOIN companies c ON c.id=i.company_id JOIN company_memberships m ON m.company_id=c.id AND m.user_id=i.invited_by JOIN users u ON u.id=m.user_id WHERE i.email=$2 AND i.status='pending' AND i.expires_at>now() AND c.status='active' AND c.lifecycle='active' AND m.status='active' AND u.status='active' AND EXISTS(SELECT 1 FROM role_permissions p WHERE p.role_id=m.role_id AND p.permission_id='invitations.manage')`,[digest(raw),email]);
  if(!result.rowCount)throw new HttpError(400,'INVALID_INVITATION','This invitation is unavailable or belongs to another address.');return result.rows[0].account_type;
 }
-export async function createIdentity(db,{name,email,passwordHash,emailVerified=false,accountType='customer'}){
+export async function createIdentity(db,{name,email,passwordHash,emailVerified=false,accountType='customer',legalConsent}){
  const id=randomUUID();
  await db.query('INSERT INTO users(id,email,display_name,password_hash,email_verified_at,account_type) VALUES($1,$2,$3,$4,CASE WHEN $5 THEN now() END,$6)',[id,email,name,passwordHash,emailVerified,accountType]);
  await db.query('INSERT INTO customer_profiles(user_id) VALUES($1)',[id]);
- await audit(db,{actor:id,action:'account.registered',target:id});return id;
+ await registerAcceptance(db,id,accountType,legalConsent);
+  await audit(db,{actor:id,action:'account.registered',target:id});return id;
 }

@@ -20,6 +20,16 @@ const badLogin=()=>new HttpError(401,'INVALID_CREDENTIALS','The mobile number or
 let dummyPinHash;
 function emailReady(){if(!pinEmailAvailable())throw new HttpError(503,'PIN_EMAIL_UNAVAILABLE','Mobile/PIN setup and recovery email are not configured. No code was sent. Use existing email/password access or contact support.');}
 function codeValue(value){if(typeof value!=='string'||!/^\d{6}$/.test(value))throw invalid();return value;}
+pinRoutes.get('/status',async(req,res)=>{
+ v.body(req.query,['challenge']);const id=v.uuid(req.query.challenge);
+ const result=await transaction(async db=>{
+  const challenge=(await db.query("SELECT id FROM pin_challenges WHERE id=$1 AND session_hash=$2 AND purpose IN ('signup','reset','enrol') AND used_at IS NULL AND attempts<5 AND expires_at>now()",[id,req.session?.token_hash])).rows[0];
+  if(!challenge)throw invalid();
+  const state=(await db.query("SELECT status FROM mail_jobs WHERE kind='pin_otp' AND reference_hash=$1 ORDER BY created_at DESC LIMIT 1",[id])).rows[0]?.status;
+  const message={accepted:'The mail server accepted your email. This does not confirm inbox delivery; check Inbox and Spam.',retry:'Email delivery is retrying after a failure. Check again shortly, or request a new code if it does not arrive.',dead:'Email delivery failed. No account change was made. Check the address, request a new code, or contact support.',cancelled:'This email request is no longer active. Request a new code.',pending:'Your email is waiting for the mail worker. Inbox delivery is not confirmed.',running:'The mail worker is attempting delivery. Inbox delivery is not confirmed.'}[state]||'Email delivery status is not available yet. Check Inbox and Spam, then request a new code or contact support.';
+  return {state:state||'unknown',message};
+ });res.json(result);
+});
 async function queueCode(db,req,{purpose,email,mobile,userId=null,revision=null,context=null}){
  await db.query('SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))',[mobile+':'+email+':'+(userId||'signup'),'pin-'+purpose]);
  await db.query('UPDATE pin_challenges SET used_at=now() WHERE mobile=$1 AND email=$2 AND purpose=$3 AND user_id IS NOT DISTINCT FROM $4::uuid AND used_at IS NULL',[mobile,email,purpose,userId]);
@@ -37,23 +47,23 @@ async function checkedChallenge(db,req,id,purpose,code){
 }
 pinRoutes.post('/register/request',async(req,res)=>{
  if(req.session.user_id)throw new HttpError(409,'ALREADY_SIGNED_IN','Use Account security to add mobile/PIN to your existing account.');
- emailReady();const input=v.body(req.body,['name','email','mobile','invitationToken','accountType'],['name','email','mobile']);
- const name=v.text(input.name,'name',100),email=v.email(input.email),mobile=mobileNumber(input.mobile);
- const invited=await validateInvitation(pool,input.invitationToken,email);const type=accountType(input.accountType||invited||'customer');if(invited&&invited!==type)throw new HttpError(400,'INVITATION_ACCOUNT_TYPE','Choose the account type required by this invitation.');
+ emailReady();const input=v.body(req.body,['name','email','mobile','countryCode','invitationToken','accountType','referralCode'],['name','email','mobile']);
+ const name=v.text(input.name,'name',100),email=v.email(input.email),mobile=mobileNumber(input.mobile,input.countryCode||'');
+ const invited=await validateInvitation(pool,input.invitationToken,email);const type=accountType(input.accountType||invited||'customer');if(invited&&invited!==type)throw new HttpError(400,'INVITATION_ACCOUNT_TYPE','Choose the account type required by this invitation.');const referralCode=input.referralCode?v.text(input.referralCode,'referral code',20).toUpperCase():'';let referralReward=null,referralRulesVersion=null;if(referralCode){if(type!=='customer')throw new HttpError(400,'REFERRAL_CUSTOMER_ONLY','Referral codes are for customer accounts only.');const referral=(await pool.query(`SELECT p.reward_amount_paise,p.rules_version FROM customer_referral_codes c JOIN users u ON u.id=c.user_id AND u.status='active' AND u.account_type='customer' CROSS JOIN referral_program_control p WHERE c.code=$1 AND p.id=true AND p.enabled`,[referralCode])).rows[0];if(!referral)throw new HttpError(400,'REFERRAL_CODE_UNAVAILABLE','This referral code is unavailable. Check it or continue without a code.');referralReward=referral.reward_amount_paise;referralRulesVersion=referral.rules_version;}
  await limit(req,'pin-signup-ip',req.ip,invited?30:5,3600);await limit(req,'pin-signup-email',type+':'+email,3,3600);await limit(req,'pin-signup-mobile',mobile,3,3600);await limit(req,'pin-signup-cooldown',type+':'+email,1,60);
  const challenge=await transaction(async db=>{
   if((await db.query('SELECT 1 FROM users WHERE email=$1 UNION ALL SELECT 1 FROM mobile_credentials WHERE mobile=$2',[email,mobile])).rowCount)return randomUUID();
-  return queueCode(db,req,{purpose:'signup',email,mobile,context:{name,accountType:type,...(input.invitationToken?{invitationToken:input.invitationToken}:{})}});
- });res.status(202).json({challenge,message:generic});
+  return queueCode(db,req,{purpose:'signup',email,mobile,context:{name,accountType:type,...(input.invitationToken?{invitationToken:input.invitationToken}:{}),...(referralCode?{referralCode,referralReward,referralRulesVersion}:{})}});
+ });const message=referralReward===null?generic:`${generic} Referral code accepted. Potential reward: ₹${(Number(referralReward)/100).toFixed(2)} after completed installation handover and platform evidence review; it is not guaranteed.`;res.status(202).json({challenge,message});
 });
 pinRoutes.post('/register/confirm',async(req,res)=>{
  emailReady();if(req.session.user_id)throw new HttpError(409,'ALREADY_SIGNED_IN','Sign out before creating another account.');
- const input=v.body(req.body,['challenge','otp','pin']),id=v.uuid(input.challenge),code=codeValue(input.otp);pinValue(input.pin,{newPin:true});
+ const input=v.body(req.body,['challenge','otp','pin','legalConsent'],['challenge','otp','pin']),id=v.uuid(input.challenge),code=codeValue(input.otp);pinValue(input.pin,{newPin:true});
  await limit(req,'pin-signup-confirm-ip',req.ip,20,3600);
  const result=await transaction(async db=>{
   const row=await checkedChallenge(db,req,id,'signup',code);if(!row)return null;
   const context=unseal(row.context);await validateInvitation(db,context.invitationToken,row.email);
-  const userId=await createIdentity(db,{name:context.name,email:row.email,passwordHash:await hashPassword(randomToken()+randomToken()),emailVerified:true,accountType:accountType(context.accountType)});
+  const type=accountType(context.accountType),userId=await createIdentity(db,{name:context.name,email:row.email,passwordHash:await hashPassword(randomToken()+randomToken()),emailVerified:true,accountType:type,legalConsent:input.legalConsent});if(context.referralCode){if(type!=='customer')throw new HttpError(400,'REFERRAL_CUSTOMER_ONLY','Referral codes are for customer accounts only.');const referral=(await db.query(`SELECT c.user_id FROM customer_referral_codes c JOIN users u ON u.id=c.user_id AND u.status='active' AND u.account_type='customer' WHERE c.code=$1`,[context.referralCode])).rows[0];if(!referral||referral.user_id===userId||!context.referralReward||!context.referralRulesVersion)throw new HttpError(400,'REFERRAL_CODE_UNAVAILABLE','This referral code is no longer available.');await db.query('INSERT INTO customer_referrals(id,referrer_user_id,referred_user_id,code,rules_version,reward_amount_paise) VALUES($1,$2,$3,$4,$5,$6)',[randomUUID(),referral.user_id,userId,context.referralCode,context.referralRulesVersion,context.referralReward]);}
   await db.query('INSERT INTO mobile_credentials(user_id,mobile,pin_hash) VALUES($1,$2,$3)',[userId,row.mobile,await hashPin(input.pin)]);
   await db.query('UPDATE pin_challenges SET used_at=now() WHERE id=$1',[id]);
   await audit(db,{actor:userId,action:'auth.pin_enabled'});return issueSession(db,userId,req.session.token_hash);
@@ -61,7 +71,7 @@ pinRoutes.post('/register/confirm',async(req,res)=>{
 });
 pinRoutes.post('/login',async(req,res)=>{
  if(!pinAvailable())throw new HttpError(503,'PIN_UNAVAILABLE','Mobile/PIN sign-in is not configured. Use email and password.');
- const input=v.body(req.body,['mobile','pin','code'],['mobile','pin']),mobile=mobileNumber(input.mobile);pinValue(input.pin);
+ const input=v.body(req.body,['mobile','countryCode','pin','code'],['mobile','pin']),mobile=mobileNumber(input.mobile,input.countryCode||'');pinValue(input.pin);
  await limit(req,'pin-login-ip',req.ip,20);await limit(req,'pin-login-mobile',mobile,10);
  const result=await transaction(async db=>{
   const owner=(await db.query('SELECT user_id FROM mobile_credentials WHERE mobile=$1',[mobile])).rows[0];if(!owner){dummyPinHash||=hashPin('483729');await verifyPin(await dummyPinHash,input.pin);return {error:badLogin()};}
@@ -80,7 +90,7 @@ pinRoutes.post('/login',async(req,res)=>{
  });if(result.error)throw result.error;setSessionCookie(res,result.issued);res.json({message:'Signed in.'});
 });
 pinRoutes.post('/enrol/request',requireUser,async(req,res)=>{
- emailReady();const input=v.body(req.body,['mobile','credential','code'],['mobile','credential']),mobile=mobileNumber(input.mobile);
+ emailReady();const input=v.body(req.body,['mobile','countryCode','credential','code'],['mobile','credential']),mobile=mobileNumber(input.mobile,input.countryCode||'');
  await limit(req,'pin-enrol',req.session.user_id,3,3600);
  const challenge=await transaction(async db=>{
   const user=await lockedUser(db,req);
@@ -103,7 +113,7 @@ pinRoutes.post('/enrol/confirm',requireUser,async(req,res)=>{
  });if(!done)throw invalid();clearSessionCookie(res);res.json({message:'Mobile/PIN enabled. All sessions signed out. Sign in with your mobile number and PIN.'});
 });
 pinRoutes.post('/reset/request',async(req,res)=>{
- emailReady();const input=v.body(req.body,['mobile']),mobile=mobileNumber(input.mobile);
+ emailReady();const input=v.body(req.body,['mobile','countryCode']),mobile=mobileNumber(input.mobile,input.countryCode||'');
  await limit(req,'pin-reset-ip',req.ip,8,3600);await limit(req,'pin-reset-mobile',mobile,3,3600);await limit(req,'pin-reset-cooldown',mobile,1,60);
  const challenge=await transaction(async db=>{
   const owner=(await db.query('SELECT user_id FROM mobile_credentials WHERE mobile=$1',[mobile])).rows[0];if(!owner)return randomUUID();

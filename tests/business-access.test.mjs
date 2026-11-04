@@ -1,3 +1,4 @@
+// Existing-company regression fixture: remove only disposable enrolment metadata, not real access rules.
 import {seedIdentity} from './helpers/identity.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,7 +21,7 @@ test('shared team/customer invitations, ownership, service and Boss overview', {
    const cookie=r.headers.getSetCookie()[0];if(cookie)this.cookie=cookie.split(';')[0];const data=await r.json();if(path==='/auth/session'&&r.ok){this.csrf=data.csrfToken;this.user=data.user;this.company=data.activeCompany;}return {status:r.status,data};
   },async session(){return this.request('/auth/session');},async register(name,accountType='business'){await this.session();await seedIdentity(db,{name:'[TEST] '+name,email:name+'@example.invalid',password:'Business access test 123!',accountType});assert.equal((await this.request('/auth/login','POST',{email:name+'@example.invalid',password:'Business access test 123!',accountType})).status,200);await this.session();}});
   const owner=client(),customer=client(),staff=client(),other=client();for(const [c,name] of [[owner,'access-owner'],[customer,'access-customer'],[staff,'access-staff'],[other,'access-other']])await c.register(name,c===customer?'customer':'business');
-  const company=async(c,name)=>{assert.equal((await c.request('/companies','POST',{name:'[TEST] '+name,city:'Kochi',email:name+'@example.invalid',phone:''})).status,201);await c.session();await db.query("UPDATE companies SET lifecycle='active' WHERE id=$1",[c.company.id]);await c.session();return c.company.id;};
+  const company=async(c,name)=>{assert.equal((await c.request('/companies','POST',{name:'[TEST] '+name,city:'Kochi',email:name+'@example.invalid',phone:''})).status,201);await c.session();await db.query("UPDATE companies SET lifecycle='active' WHERE id=$1",[c.company.id]);await db.query('DELETE FROM company_os_enrolment WHERE company_id=$1',[c.company.id]);await c.session();return c.company.id;};
   const companyId=await company(owner,'access-company'),otherId=await company(other,'other-company');let employeeToken,contactId,customerToken,orderId;
   const token=result=>new URLSearchParams(new URL(result.data.shareUrl).hash.split('?')[1]).get('token');
   const inviteCustomer=async(id=contactId,extra={})=>{

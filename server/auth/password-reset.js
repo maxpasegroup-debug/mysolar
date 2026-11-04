@@ -35,7 +35,7 @@ passwordReset.post('/confirm',async(req,res)=>{
   const owner=(await db.query('SELECT user_id FROM password_reset_challenges WHERE id=$1',[id])).rows[0];if(!owner)return false;
   const user=(await db.query("SELECT id,password_hash FROM users WHERE id=$1 AND status='active' FOR UPDATE",[owner.user_id])).rows[0];
   const row=(await db.query('SELECT * FROM password_reset_challenges WHERE id=$1 FOR UPDATE',[id])).rows[0];
-  if(!user||row.used_at||row.attempts>=5||Date.parse(row.expires_at)<=Date.now()||row.session_hash!==req.session.token_hash||row.credential_hash!==digest(user.password_hash))return false;
+  if(!user||!row||row.used_at||row.attempts>=5||Date.parse(row.expires_at)<=Date.now()||row.session_hash!==req.session.token_hash||row.credential_hash!==digest(user.password_hash))return false;
   if(!safeEqual(row.code_hash,privateDigest('password-reset:'+id+':'+input.otp))){await db.query('UPDATE password_reset_challenges SET attempts=attempts+1 WHERE id=$1',[id]);await audit(db,{actor:user.id,action:'auth.password_code_rejected'});return false;}
   await db.query('UPDATE users SET password_hash=$1,updated_at=now() WHERE id=$2',[hash,user.id]);
   await db.query('UPDATE password_reset_challenges SET used_at=now() WHERE user_id=$1 AND used_at IS NULL',[user.id]);

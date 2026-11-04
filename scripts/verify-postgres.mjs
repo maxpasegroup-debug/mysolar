@@ -33,7 +33,7 @@ try{
  connection.pathname='/mysolar_test_phase1';
  process.stdout.write('Isolated local PostgreSQL ready. Running tests; credentials are kept in memory.\n');
  const testEnv={...process.env,NODE_ENV:'test',DATABASE_URL:connection.href,TEST_DATABASE_URL:connection.href,SIA_PROVIDER:'disabled'};
- for(const name of ['AUTH_PIN_PEPPER','DATA_ENCRYPTION_KEY','AUTH_REQUIRE_VERIFIED_EMAIL','AUTH_REQUIRE_PRIVILEGED_MFA','RESEND_API_KEY','SMTP_HOST','SMTP_USER','SMTP_PASSWORD','MAIL_FROM','SIA_API_KEY','SIA_PROVIDER_URL','SIA_MODEL','SESSION_SECRET','STAGING_MODE','STAGING_ACCESS_USER','STAGING_ACCESS_PASSWORD','STAGING_EMAIL_RECIPIENTS'])delete testEnv[name];
+ for(const name of ['AUTH_PIN_PEPPER','DATA_ENCRYPTION_KEY','AUTH_REQUIRE_VERIFIED_EMAIL','AUTH_REQUIRE_PRIVILEGED_MFA','RESEND_API_KEY','SMTP_HOST','SMTP_USER','SMTP_PASSWORD','MAIL_FROM','SIA_API_KEY','SIA_PROVIDER_URL','SIA_MODEL','SESSION_SECRET','RAZORPAY_BILLING_MODE','RAZORPAY_KEY_ID','RAZORPAY_KEY_SECRET','RAZORPAY_WEBHOOK_SECRET','RAZORPAY_LIVE_ENABLED','FILE_SCAN_URL','FILE_SCAN_KEY','OPS_ALERT_RECIPIENT','OPS_ALERTS_ENABLED','STAGING_MODE','STAGING_ACCESS_USER','STAGING_ACCESS_PASSWORD','STAGING_EMAIL_RECIPIENTS'])delete testEnv[name];
  testEnv.SESSION_SECRET=randomBytes(48).toString('hex');testEnv.APP_ORIGIN='http://localhost:3000';testEnv.DATABASE_SSL='disable';
  const result=spawnSync(process.execPath,['--test','--test-concurrency=2','--test-timeout=180000',...specs],{windowsHide:true,stdio:'inherit',env:testEnv});
  process.exitCode=result.status??1;

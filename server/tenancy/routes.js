@@ -15,6 +15,7 @@ import { permissionsFor, staffRoles, modulePermissions } from '../permissions.js
 import { HttpError, badInput } from '../errors.js';
 import * as v from '../validation.js';
 import { editable,markChanged } from '../setup/service.js';
+import {completePrivateDraft} from '../auth/setup-draft.js';
 import { teamCapacity } from '../commercial/policy.js';
 import {requireStaffEntitlement,PART_TIME_ROLE} from '../commercial/growth.js';
 export const companies=Router();
@@ -37,6 +38,7 @@ companies.post('/',async(req,res)=>{
     const user=await lockedUser(db,req);requireBusiness(user);
     const creation=await prepareCompanyCreation(db,user.id,input.operationKey,{name,city,email,phone,businessType,businessPreset,state:location?.state||'',district:location?.district||'',...(workspacePlan?{workspacePlan}:{})}),id=creation.id;
     if(creation.replayed){
+      await completePrivateDraft(db,user.id,input.operationKey);
       const company=(await db.query(`SELECT ${companyFields} FROM companies WHERE id=$1`,[id])).rows[0];
       await db.query('UPDATE sessions SET active_company_id=$1 WHERE token_hash=$2',[id,req.session.token_hash]);
       return {company,replayed:true};
@@ -49,6 +51,7 @@ companies.post('/',async(req,res)=>{
     await db.query("INSERT INTO company_memberships(id,company_id,user_id,role_id) VALUES($1,$2,$3,'owner')",[randomUUID(),id,user.id]);
     await db.query('UPDATE sessions SET active_company_id=$1 WHERE token_hash=$2',[id,req.session.token_hash]);
     await audit(db,{actor:user.id,company:id,action:'company.created',target:id,metadata:{businessType,businessPreset,creationFingerprint:creation.fingerprint}});
+    await completePrivateDraft(db,user.id,input.operationKey);
     return {company:result.rows[0],replayed:false};
   });
   res.status(result.replayed?200:201).json(result);

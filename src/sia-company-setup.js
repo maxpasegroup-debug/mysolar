@@ -2,7 +2,7 @@
 window.SiaCompanySetup=(()=>{
  const e=x=>escapeHTML(x??'');
  const words=['Let’s shape your company workspace. I’ll guide you through the essentials.','What solar products and services do you provide? Choose everything relevant.','Now shape your team. Choose the positions you need; invite people after review.'];
- function avatar(){return '<span class="scs-avatar" role="img" aria-label="SIA animated placeholder"><span class="scs-orbit"></span><span class="scs-face"><i></i><i></i><b></b></span></span>';}
+ function avatar(){return SiaOrb.markup({size:'small',label:'SIA company setup guide'})+SiaOrb.control();}
  function field(label,name,type,value,extra=''){return `<label>${label}<input name="${name}" type="${type}" value="${e(value)}" ${extra}></label>`;}
  function page({catalogue:c,company,profile,plan},user){
   const existing=Boolean(company),p=plan||{},email=company?.business_email||user.email,phone=p.emergencyContact||company?.phone||'',counts=new Map((p.team||[]).map(r=>[r.role,r.count]));
@@ -26,5 +26,5 @@ window.SiaCompanySetup=(()=>{
  document.addEventListener('change',event=>{const el=event.target,f=el.closest('[data-scs-form]');if(!f)return;if(el.hasAttribute('data-scs-role'))f.querySelector(`[data-scs-count="${el.dataset.scsRole}"]`).disabled=!el.checked;if(el.hasAttribute('data-scs-email')){f.elements.email.value=el.checked?Account.user.email:f.elements.email.value;f.elements.email.readOnly=el.checked;if(!el.checked)f.elements.email.focus();}if(el.hasAttribute('data-scs-whatsapp')){f.elements.whatsapp.readOnly=el.checked;if(el.checked)f.elements.whatsapp.value=f.elements.emergencyContact.value;}summary(f);});
  document.addEventListener('submit',event=>{const f=event.target;if(!f.matches('[data-scs-form]'))return;const step=Number(f.dataset.step||0);if(step<2){event.preventDefault();event.stopImmediatePropagation();if(validStep(f,step))show(f,step+1);return;}for(let i=0;i<3;i++){if(!validStep(f,i)){event.preventDefault();event.stopImmediatePropagation();show(f,i);return;}}},true);
  document.addEventListener('submit',event=>{const f=event.target;if(f.id!=='sia-company-plan')return;event.preventDefault();void Account.run(async()=>{await Account.api('/companies/current/setup/sia-plan','PUT',{revision:Number(f.dataset.revision),plan:values(f)});await Account.refresh();Account.navigate('/distributor/dashboard');},f);});
- return {page,values,avatar};
+ return {page,values,avatar,resume:show};
 })();

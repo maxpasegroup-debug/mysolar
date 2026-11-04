@@ -34,7 +34,7 @@ if(!['email','manual'].includes(invitationDelivery)||(production&&invitationDeli
 export const config = Object.freeze({
   production, origin: origin.origin, secret, dataEncryptionKey:encryptionKey, pinPepper,
   fileScanUrl:scanUrl,fileScanKey:process.env.FILE_SCAN_KEY||'',fileQuotaBytes:integer('FILE_QUOTA_BYTES',104857600,2097152,1073741824),
-  releaseId:(process.env.APP_RELEASE||'').slice(0,100)||null,
+  releaseId:(process.env.APP_RELEASE||'').slice(0,100)||(/^[a-f0-9]{40}$/i.test(process.env.RAILWAY_GIT_COMMIT_SHA||'')?process.env.RAILWAY_GIT_COMMIT_SHA:null),
   opsAlertsEnabled:process.env.OPS_ALERTS_ENABLED==='true',
   opsAlertRecipient:process.env.OPS_ALERT_RECIPIENT||'',
   dbWarningBytes:integer('DB_WARNING_BYTES',1073741824,1048576,Number.MAX_SAFE_INTEGER),

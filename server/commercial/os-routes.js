@@ -1,3 +1,6 @@
+import {commercialReady} from '../legal/catalogue.js';
+import {companyLegalAcceptance} from '../legal/routes.js';
+import {assertCommercialAcceptance} from '../legal/service.js';
 import {createPaymentSession,applyVerifiedProviderEvent} from './payments.js';
 import {freeTrialConfiguration,startFreeTrial} from './free-trial.js';
 import {policy} from './policy.js';
@@ -17,6 +20,7 @@ import {limit} from '../auth/security.js';
 export const osRoutes=Router(),billingAdmin=Router(),billingWebhook=Router();
 const owner=ctx=>{if(ctx.role!=='owner')throw new HttpError(403,'OWNER_REQUIRED','The company owner must review subscription terms.');};
 osRoutes.use(requireUser);osRoutes.use((req,res,next)=>['GET','HEAD'].includes(req.method)?next():csrf(req,res,next));
+osRoutes.post('/legal-accept',companyLegalAcceptance);
 osRoutes.post('/trial',async(req,res)=>{
  v.body(req.body,['planVersionId','confirm']);const version=v.uuid(req.body.planVersionId);if(req.body.confirm!==true)throw badInput('Confirm starting the seven-day free trial. No payment or autopay is required.');
  await limit(req,'os-free-trial',req.session.user_id,10,86400);
@@ -30,16 +34,16 @@ osRoutes.get('/leads',async(req,res)=>res.json(await withCompany(req,'company.se
 })));
 osRoutes.get('/plans',async(req,res)=>res.json(await withCompany(req,'subscription.read',async(db,ctx)=>{
  owner(ctx);const settings=billingConfiguration(),rows=(await db.query("SELECT p.id,v.id AS version_id,p.code,v.terms,m.mode,m.total_count FROM commercial_plans p JOIN commercial_plan_versions v ON v.id=p.current_version_id LEFT JOIN razorpay_plan_mappings m ON m.plan_version_id=v.id WHERE p.status='active' AND (v.terms->>'effectiveFrom')::timestamptz<=now() AND (v.terms->>'effectiveTo' IS NULL OR (v.terms->>'effectiveTo')::timestamptz>now()) ORDER BY p.code LIMIT 30")).rows;
- const plans=rows.map(row=>{let eligible=false;try{renewalAmount(row.terms);eligible=approvedOsOffer(row.code,row.terms)&&row.mode===settings.mode&&settings.available;}catch{}return {...row,eligible};});
+ const plans=rows.map(row=>{let eligible=false;try{renewalAmount(row.terms);eligible=approvedOsOffer(row.code,row.terms)&&row.mode===settings.mode&&settings.available&&commercialReady();}catch{}return {...row,eligible};});
  const contract=(await db.query('SELECT * FROM os_billing_contracts WHERE company_id=$1 ORDER BY consent_at DESC LIMIT 1',[ctx.companyId])).rows[0];
  const current=(await db.query("SELECT s.terms->>'name' AS name,s.status,s.start_at,s.end_at,s.activation_source FROM company_commercial_state cs JOIN company_subscriptions s ON s.id=cs.current_subscription_id AND s.company_id=cs.company_id WHERE cs.company_id=$1",[ctx.companyId])).rows[0]||null;
  const access=await osAccess(db,ctx.companyId),company=(await db.query('SELECT name,lifecycle,status FROM companies WHERE id=$1',[ctx.companyId])).rows[0],history=(await db.query('SELECT 1 FROM company_subscriptions WHERE company_id=$1 LIMIT 1',[ctx.companyId])).rowCount,verified=(await db.query("SELECT 1 FROM users WHERE id=$1 AND status='active' AND email_verified_at IS NOT NULL",[ctx.userId])).rowCount;
  const freeTrial=await freeTrialConfiguration(db),trial=(await db.query('SELECT id,start_at,end_at FROM company_subscriptions WHERE company_id=$1 AND trial_granted ORDER BY created_at,id LIMIT 1',[ctx.companyId])).rows[0]||null;
- return {plans,current,policy:await policy(db,ctx.companyId),contract:publicContract(contract),access,company,freeTrial,trial,trialEligible:Boolean(freeTrial.configured&&access.managed&&company.status==='active'&&company.lifecycle==='active'&&!contract&&!history&&verified),subscriptionEligible:Boolean(access.managed&&company.status==='active'&&company.lifecycle==='active'&&trial&&Date.parse(trial.end_at)<=Date.now()&&!access.unlocked&&(!contract||['failed','cancelled'].includes(contract.state))&&verified),billingAvailable:settings.available,mode:settings.available?settings.mode:'disabled',reminders:contract?(await db.query('SELECT r.day,r.due_at,r.status,m.status AS delivery_state,m.last_code FROM os_trial_reminders r LEFT JOIN mail_jobs m ON m.id=r.mail_id WHERE r.contract_id=$1 ORDER BY r.day',[contract.id])).rows:[],trialDays:7};
+ return {plans,current,policy:await policy(db,ctx.companyId),contract:publicContract(contract),access,company,freeTrial,trial,trialEligible:Boolean(freeTrial.configured&&access.managed&&company.status==='active'&&company.lifecycle==='active'&&!contract&&!history&&verified),subscriptionEligible:Boolean(access.managed&&company.status==='active'&&company.lifecycle==='active'&&trial&&Date.parse(trial.end_at)<=Date.now()&&!access.unlocked&&(!contract||['failed','cancelled'].includes(contract.state))&&verified),legalReady:commercialReady(),billingAvailable:settings.available&&commercialReady(),mode:settings.available?settings.mode:'disabled',reminders:contract?(await db.query('SELECT r.day,r.due_at,r.status,m.status AS delivery_state,m.last_code FROM os_trial_reminders r LEFT JOIN mail_jobs m ON m.id=r.mail_id WHERE r.contract_id=$1 ORDER BY r.day',[contract.id])).rows:[],trialDays:7};
 })));
 osRoutes.post('/checkout',async(req,res)=>{
  v.body(req.body,['operationKey','planVersionId','consent']);if(req.body.consent!==true)throw badInput('Review the renewal price, dates, reminder policy and cancellation terms before authorising autopay.');const input={operationKey:v.uuid(req.body.operationKey),planVersionId:v.uuid(req.body.planVersionId)};
- await limit(req,'os-checkout',req.session.user_id,5,3600);const provider=razorpayClient(),prepared=await withCompany(req,'subscription.read',(db,ctx)=>prepareContract(db,ctx,input,provider.settings));
+ await limit(req,'os-checkout',req.session.user_id,5,3600);const provider=razorpayClient(),prepared=await withCompany(req,'subscription.read',async(db,ctx)=>{owner(ctx);if(provider.settings.available)await assertCommercialAcceptance(db,ctx.userId,ctx.companyId);return prepareContract(db,ctx,input,provider.settings);});
  if(prepared.replayed){if(!['created','trial','paid','cancelled'].includes(prepared.contract.state))throw new HttpError(409,'MANDATE_RECONCILIATION_REQUIRED','This mandate is pending or uncertain. Contact support rather than creating another.');return res.json({contract:publicContract(prepared.contract)});}
  try{
   const created=await createPaymentSession({provider,contract:prepared.contract,mapping:prepared.mapping});

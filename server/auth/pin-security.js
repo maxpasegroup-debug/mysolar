@@ -5,9 +5,21 @@ import {badInput,HttpError} from '../errors.js';
 
 export const pinAvailable=()=>Boolean(config.pinPepper);
 export const pinEmailAvailable=()=>pinAvailable()&&config.mailEnabled&&Boolean(config.dataEncryptionKey);
-export function mobileNumber(value){
- if(typeof value!=='string'||value.length>24||!/^[+\d ()-]+$/.test(value))throw badInput('Enter a valid Indian mobile number.');
- let digits=value.replace(/\D/g,'');if(digits.length===12&&digits.startsWith('91'))digits=digits.slice(2);
+export function mobileNumber(value,countryCode=''){
+ if(typeof value!=='string'||value.length>24||!/^[+\d ()-]+$/.test(value))throw badInput('Enter a valid mobile number.');
+ let digits=value.replace(/\D/g,'');
+ if(countryCode){
+  if(typeof countryCode!=='string'||!/^\+[1-9]\d{0,2}$/.test(countryCode))throw badInput('Enter a valid country calling code, such as +91.');
+  const calling=countryCode.slice(1);
+  if(digits.startsWith(calling)&&value.trim().startsWith('+'))digits=digits.slice(calling.length);
+  if(digits.length<4||digits.length>14||digits.startsWith('0'))throw badInput('Enter a valid mobile number without the country calling code.');
+  return '+'+calling+digits;
+ }
+ if(value.trim().startsWith('+')){
+  if(digits.length<8||digits.length>15||digits.startsWith('0'))throw badInput('Enter a valid international mobile number.');
+  return '+'+digits;
+ }
+ if(digits.length===12&&digits.startsWith('91'))digits=digits.slice(2);
  if(!/^[6-9]\d{9}$/.test(digits))throw badInput('Enter a 10-digit Indian mobile number, optionally with +91.');
  return '+91'+digits;
 }

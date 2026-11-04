@@ -1,3 +1,4 @@
+// Existing-company regression fixture: remove only disposable enrolment metadata, not real access rules.
 import {seedIdentity} from './helpers/identity.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,7 +26,7 @@ test('PostgreSQL integration: fresh/upgrade migrations, HTTP tenancy and critica
   const a=client(),b=client(),customer=client(),stranger=client();
   await t.test('HTTP readiness returns ready only after the complete local migration history exists',async()=>{const response=await fetch(base+'/readyz');assert.equal(response.status,200);assert.deepEqual(await response.json(),{status:'ready'});});
   await t.test('fixture login rotates anonymous session and public registration rejects privilege fields',async()=>{await a.session();const before=a.cookie;assert.equal((await a.request('/auth/register','POST',{name:'[TEST] invalid role',email:'invalid-role@example.invalid',password:'Test-only password 123!',role:'platform_admin'})).status,400);await a.register('owner-a');assert.ok(a.cookie!==before);await b.register('owner-b');await customer.register('customer-a','customer');await stranger.register('customer-b');assert.equal((await a.request('/platform/commercial/settings')).status,403);});
-  const createCompany=async(c,name)=>{const r=await c.request('/companies','POST',{name:'[TEST] '+name,city:'Kochi',email:name+'@example.invalid',phone:''});assert.equal(r.status,201);await c.session();await db.query("UPDATE companies SET lifecycle='active' WHERE id=$1",[c.company.id]);return c.company.id;};
+  const createCompany=async(c,name)=>{const r=await c.request('/companies','POST',{name:'[TEST] '+name,city:'Kochi',email:name+'@example.invalid',phone:''});assert.equal(r.status,201);await c.session();await db.query("UPDATE companies SET lifecycle='active' WHERE id=$1",[c.company.id]);await db.query('DELETE FROM company_os_enrolment WHERE company_id=$1',[c.company.id]);return c.company.id;};
   const companyA=await createCompany(a,'company-a'),companyB=await createCompany(b,'company-b'),contact=randomUUID();await db.query("INSERT INTO company_contacts(id,company_id,user_id,kind,name) VALUES($1,$2,$3,'individual','[TEST] Customer A')",[contact,companyA,customer.user.id]);
   await t.test('expected-company tampering and foreign contact access are denied',async()=>{const active=a.company;a.company={id:companyB};assert.equal((await a.request('/companies/current/operations/list/contacts')).status,409);a.company=active;assert.equal((await b.request('/companies/current/operations/record/contacts/'+contact)).status,404);});
   await purchaseFlows(t,{db,a,b,customer,stranger,companyA,companyB,client});

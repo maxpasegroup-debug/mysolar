@@ -64,7 +64,7 @@ export async function details(db,enquiry,{ctx=null,page=1}={}){
  const history=await paged(db,'x.action,x.company_id,x.version_id,x.created_at','FROM enquiry_events x',terms.join(' AND '),b,page,'x.id DESC');
  const recipients=(await db.query(`SELECT company_id,vendor_snapshot,viewed_at,created_at FROM enquiry_recipients WHERE enquiry_id=$1 ${ctx?'AND company_id=$2':''} ORDER BY created_at,company_id`,ctx?[enquiry.id,ctx.companyId]:[enquiry.id])).rows;
  const mb=new Bindings(),mw=[`x.enquiry_id=${mb.add(enquiry.id)}`];if(ctx)mw.push(`x.company_id=${mb.add(ctx.companyId)}`);
- const messages=await paged(db,'x.id,x.company_id,x.version_id,x.author_side,x.kind,x.body,x.created_at','FROM enquiry_messages x',mw.join(' AND '),mb,page,'x.created_at DESC,x.id');
+ const messages=await paged(db,'x.id,x.company_id,x.version_id,x.author_side,x.kind,x.body,x.created_at,u.display_name AS author_name','FROM enquiry_messages x JOIN users u ON u.id=x.author_id',mw.join(' AND '),mb,page,'x.created_at DESC,x.id');
  const qb=new Bindings(),qw=[`q.enquiry_id=${qb.add(enquiry.id)}`];if(ctx)qw.push(`q.company_id=${qb.add(ctx.companyId)}`);else qw.push("q.status<>'draft'");
  const quotations=await paged(db,`q.id,q.enquiry_id,q.company_id,q.reference,q.version,q.total_paise,q.currency,q.valid_until,q.issuer_snapshot,q.estimated,q.tax_mode,${effective()} AS effective_status`,'FROM quotation_versions q LEFT JOIN customer_enquiries e ON e.id=q.enquiry_id',qw.join(' AND '),qb,page,'q.created_at DESC,q.id');
  const result={enquiry:ctx?companyEnquiry(enquiry):customerEnquiry(enquiry),recipients,history,messages,quotations};

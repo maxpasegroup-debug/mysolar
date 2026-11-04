@@ -11,7 +11,7 @@ test('company people and sales controls enforce profiles, hierarchy, pipeline an
  const initial=await controls(),sales=initial.bases.sales;
  const profileBody=(name,permissions)=>({id:'',revision:1,name,baseRole:'sales',permissions,discountLimitBps:500,active:true,reason:why});
  const sellerProfile=ok(await a.request(root+'/controls/profiles','POST',profileBody('[TEST] Sales',sales.filter(p=>p!=='quotations.approve')))).id;
- let reviewerBody=profileBody('[TEST] Reviewer',['workspace.read','company.read','quotations.read','quotations.approve']);
+ let reviewerBody=profileBody('[TEST] Reviewer',[...sales.filter(p=>p!=='quotations.approve'),'quotations.approve']);
  const reviewerProfile=ok(await a.request(root+'/controls/profiles','POST',reviewerBody)).id;
  for(const [person,profileId] of [[seller,sellerProfile],[reviewer,reviewerProfile]]){ok(await a.request(root+'/members','POST',{email:person.user.email,role:'sales',profileId}),201);ok(await person.request('/companies/select','POST',{companyId:companyA}));await person.session();}
  const memberId=async person=>(await db.query('SELECT id,people_revision FROM company_memberships WHERE company_id=$1 AND user_id=$2',[companyA,person.user.id])).rows[0];
@@ -36,6 +36,12 @@ test('company people and sales controls enforce profiles, hierarchy, pipeline an
  });
  const policyPayload=(p,changes={})=>({revision:p.revision,requireReview:p.require_review,discountLimitBps:p.discount_limit_bps,qualificationRequired:p.qualification_required,pipeline:p.pipeline,reason:why,...changes});
  let lead,contact;
+ await t.test('round-robin lead assignment rotates across eligible employees and manual choice remains supported',async()=>{
+  const p=(await controls()).policy;ok(await a.request(root+'/controls/policy','POST',policyPayload(p,{leadAssignmentMode:'round_robin'})));
+  const ids=[];for(let i=0;i<2;i++){const created=ok(await a.request(ops+'/leads','POST',{operationKey:randomUUID(),enquiryId,contactId:null,title:'[TEST] Round robin '+i,source:'',interest:'',location:'[TEST] site',assigneeId:'',priority:'normal',nextAction:'[TEST] contact customer',followUp:null}),201);ids.push((await db.query('SELECT assignee_id FROM crm_leads WHERE id=$1',[created.id])).rows[0].assignee_id);}
+  assert.equal(new Set(ids).size,2);assert.deepEqual(new Set(ids),new Set([seller.user.id,reviewer.user.id]));
+  const latest=(await controls()).policy;ok(await a.request(root+'/controls/policy','POST',policyPayload(latest,{leadAssignmentMode:'manual'})));
+ });
  await t.test('custom stages preserve canonical sales milestones and require saved qualification',async()=>{
   const p=(await controls()).policy,pipeline=structuredClone(p.pipeline);pipeline[0].next=['site_visit','lost'];pipeline.splice(1,0,{code:'site_visit',label:'Site visit booked',category:'contacted',next:['contacted','lost']});
   ok(await a.request(root+'/controls/policy','POST',policyPayload(p,{pipeline,qualificationRequired:true,requireReview:true,discountLimitBps:500})));

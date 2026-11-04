@@ -4,6 +4,7 @@ import {transaction,audit} from '../db/pool.js';
 import {config} from '../config.js';
 import {mailTransport} from '../mail.js';
 import {enqueueMail} from '../mail-queue.js';
+import {otpEmail} from './otp-email.js';
 import {csrf,issueSession,setSessionCookie} from './sessions.js';
 import {limit,privateDigest,safeEqual,hashPassword} from './security.js';
 import {seal,unseal} from './sealed.js';
@@ -30,14 +31,15 @@ businessSignup.post('/business-signup/request',csrf,async(req,res)=>{
   await lockEmail(db,email);if((await db.query('SELECT 1 FROM users WHERE lower(email)=$1',[email])).rowCount)throw exists();
   if(d.previousChallenge)await db.query('UPDATE registration_challenges SET used_at=now(),context=NULL WHERE id=$1 AND session_hash=$2 AND used_at IS NULL',[d.previousChallenge,req.session.token_hash]);
   await db.query('UPDATE registration_challenges SET used_at=now(),context=NULL WHERE email=$1 AND session_hash=$2 AND used_at IS NULL',[email,req.session.token_hash]);
-  const id=randomUUID(),code=String(randomInt(0,100000000)).padStart(8,'0'),expires=new Date(Date.now()+900000);
+  const id=randomUUID(),code=String(randomInt(0,1000000)).padStart(6,'0'),expires=new Date(Date.now()+900000);
   await db.query('INSERT INTO registration_challenges(id,email,session_hash,code_hash,context,expires_at) VALUES($1,$2,$3,$4,$5,$6)',[id,email,req.session.token_hash,privateDigest('signup:'+id+':'+code),seal({flow:'business_email_first',accountType:'business'}),expires]);
-  await enqueueMail(db,{kind:'registration_otp',email,referenceHash:id,subject:'Verify your MY Solar business email',text:'MY SOLAR SOLUTIONS\n\nYour business signup code:\n\n'+code+'\n\nValid for 15 minutes, once, in the browser where you started. Verification does not create a company or activate billing. Never share this code. If you did not request it, ignore this email.',expiresAt:expires});
+  const title='Verify your MY Solar business email',description='Use this code to verify your business account email.';
+  await enqueueMail(db,{kind:'registration_otp',email,referenceHash:id,subject:title,text:'MY SOLAR SOLUTIONS\n\n'+description+'\n\nYour six-digit code is '+code+'. It expires in 15 minutes and can be used once in this browser. Verification does not create a company or activate billing. Never share this code. If you did not request it, ignore this email.',html:otpEmail({title,code,description,expiry:'15 minutes',warning:'Never share this code. MY Solar support will never ask you for it.'}),expiresAt:expires});
   await audit(db,{action:'auth.business_signup_code_queued'});return id;
  });res.status(202).json({challenge:id,message:'Verification email queued. Check your inbox and Spam. Delivery is not yet confirmed.'});
 });
 businessSignup.post('/business-signup/verify',csrf,async(req,res)=>{
- ready(req);const d=v.body(req.body,['challenge','otp']),id=v.uuid(d.challenge);if(typeof d.otp!=='string'||!/^\d{8}$/.test(d.otp))throw invalid();
+ ready(req);const d=v.body(req.body,['challenge','otp']),id=v.uuid(d.challenge);if(typeof d.otp!=='string'||!/^\d{6}$/.test(d.otp))throw invalid();
  await limit(req,'email-signup-confirm-ip',req.ip,20,900);await limit(req,'email-signup-confirm-challenge',id,10,900);
  const result=await transaction(async db=>{const row=await challenge(db,req,id);if(!row)return null;if(row.verified_at)return {email:row.email};if(!safeEqual(row.code_hash,privateDigest('signup:'+id+':'+d.otp))){await db.query('UPDATE registration_challenges SET attempts=attempts+1 WHERE id=$1',[id]);return null;}if((await db.query('SELECT 1 FROM users WHERE lower(email)=$1',[row.email])).rowCount)throw exists();await db.query('UPDATE registration_challenges SET verified_at=now() WHERE id=$1',[id]);await audit(db,{action:'auth.business_email_verified'});return {email:row.email};});
  if(!result)throw invalid();res.json({...result,verified:true,message:'Email verified. Set your name and password to create your account.'});

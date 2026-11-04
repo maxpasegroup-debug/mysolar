@@ -4,9 +4,9 @@ import {mailTransport} from './mail.js';
 import {config} from './config.js';
 import {seal,unseal} from './auth/sealed.js';
 
-export async function enqueueMail(db,{kind,userId=null,companyId=null,email,referenceHash=null,subject,text,expiresAt}){
+export async function enqueueMail(db,{kind,userId=null,companyId=null,email,referenceHash=null,subject,text,html=null,expiresAt}){
  if(!mailTransport)throw Error('MAIL_UNAVAILABLE');
- const id=randomUUID();await db.query('INSERT INTO mail_jobs(id,kind,user_id,company_id,recipient,reference_hash,payload,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id,kind,userId,companyId,email,referenceHash,seal({subject,text}),expiresAt]);return id;
+ const id=randomUUID();await db.query('INSERT INTO mail_jobs(id,kind,user_id,company_id,recipient,reference_hash,payload,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id,kind,userId,companyId,email,referenceHash,seal({subject,text,...(html?{html}:{})}),expiresAt]);return id;
 }
 // Store fixed categories, never raw SMTP responses, addresses, credentials or OTP content.
 export function mailFailureCode(error,stage='send'){

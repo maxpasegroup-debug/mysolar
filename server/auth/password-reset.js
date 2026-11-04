@@ -4,6 +4,7 @@ import {transaction,audit} from '../db/pool.js';
 import {config} from '../config.js';
 import {mailTransport} from '../mail.js';
 import {enqueueMail} from '../mail-queue.js';
+import {otpEmail} from './otp-email.js';
 import {csrf,clearSessionCookie,invalidateAll} from './sessions.js';
 import {limit,privateDigest,digest,safeEqual,hashPassword} from './security.js';
 import {accountType} from './account-type.js';
@@ -21,14 +22,15 @@ passwordReset.post('/request',async(req,res)=>{
   const user=(await db.query("SELECT id,email,password_hash FROM users WHERE email=$1 AND account_type=$2 AND status='active' FOR UPDATE",[email,type])).rows[0];
   if(!user)return randomUUID();
   await db.query('UPDATE password_reset_challenges SET used_at=now() WHERE user_id=$1 AND session_hash=$2 AND used_at IS NULL',[user.id,req.session.token_hash]);
-  const id=randomUUID(),code=String(randomInt(0,100000000)).padStart(8,'0'),expires=new Date(Date.now()+900000);
+  const id=randomUUID(),code=String(randomInt(0,1000000)).padStart(6,'0'),expires=new Date(Date.now()+900000);
   await db.query('INSERT INTO password_reset_challenges(id,user_id,session_hash,code_hash,credential_hash,expires_at) VALUES($1,$2,$3,$4,$5,$6)',[id,user.id,req.session.token_hash,privateDigest('password-reset:'+id+':'+code),digest(user.password_hash),expires]);
-  await enqueueMail(db,{kind:'password_otp',userId:user.id,email:user.email,referenceHash:id,subject:'Reset your MY Solar Solutions password',text:'MY SOLAR SOLUTIONS\n\nYour '+(type==='business'?'business':'customer')+' account password reset code:\n\n'+code+'\n\nThis code is valid for 15 minutes and can be used once, in the browser where you requested it. Enter it with your new password. Never share this code; our team will never ask for it. If you did not request this, ignore this email. Your password has not changed.',expiresAt:expires});
+  const title='Reset your MY Solar password',description='Use this code to reset your '+(type==='business'?'business':'customer')+' account password.';
+  await enqueueMail(db,{kind:'password_otp',userId:user.id,email:user.email,referenceHash:id,subject:title,text:'MY SOLAR SOLUTIONS\n\n'+description+'\n\nYour six-digit code is '+code+'. It expires in 15 minutes and can be used once in this browser. Enter it with your new password. Never share this code; our team will never ask for it. If you did not request this, ignore this email. Your password has not changed.',html:otpEmail({title,code,description,expiry:'15 minutes'}),expiresAt:expires});
   await audit(db,{actor:user.id,action:'auth.password_code_queued'});return id;
  });res.status(202).json({challenge,message});
 });
 passwordReset.post('/confirm',async(req,res)=>{
- ready();const input=v.body(req.body,['challenge','otp','password']),id=v.uuid(input.challenge);if(typeof input.otp!=='string'||!/^\d{8}$/.test(input.otp))throw invalid();const password=v.password(input.password);
+ ready();const input=v.body(req.body,['challenge','otp','password']),id=v.uuid(input.challenge);if(typeof input.otp!=='string'||!/^\d{6}$/.test(input.otp))throw invalid();const password=v.password(input.password);
  await limit(req,'password-code-confirm-ip',req.ip,20,900);await limit(req,'password-code-confirm-challenge',id,10,900);
  const hash=await hashPassword(password);
  const changed=await transaction(async db=>{

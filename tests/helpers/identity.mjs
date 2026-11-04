@@ -8,6 +8,6 @@ export function mockSignupMail(t,nodemailer){const messages=[];t.mock.method(nod
 export async function verifiedRegister(client,body,db,messages){
  const request=await client.request('/auth/register','POST',body);if(request.status!==202)return request;
  const job=(await db.query('SELECT id FROM mail_jobs WHERE reference_hash=$1',[request.data.challenge])).rows[0];if(!job)throw Error('Signup did not queue an email');const {mailTick}=await import('../../server/mail-queue.js');
- for(let n=0;n<40;n++){await mailTick();const mail=messages.find(m=>m.messageId==='<'+job.id+'@mysolar.solutions>');if(mail){const otp=mail.text.match(/\b[0-9]{8}\b/)[0];return client.request('/auth/register/confirm','POST',{challenge:request.data.challenge,otp});}}
+ for(let n=0;n<40;n++){await mailTick();const mail=messages.find(m=>m.messageId==='<'+job.id+'@mysolar.solutions>');if(mail){const otp=mail.text.match(/\b[0-9]{6}\b/)[0];return client.request('/auth/register/confirm','POST',{challenge:request.data.challenge,otp});}}
  throw Error('Mocked signup email was not processed');
 }

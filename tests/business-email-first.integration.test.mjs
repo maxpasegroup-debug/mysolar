@@ -16,7 +16,7 @@ test('email-first business onboarding proves delivery boundaries, session owners
  const edited=checked(await request(owner,'edited-business@example.invalid',first.challenge),202);
  assert.equal((await owner.request('/auth/business-signup/status?challenge='+first.challenge)).status,400);
  const job=(await db.query('SELECT * FROM mail_jobs WHERE reference_hash=$1',[edited.challenge])).rows[0];
- const code=unseal(job.payload).text.match(/\b[0-9]{8}\b/)[0];assert.ok(!JSON.stringify(edited).includes(code));
+ const code=unseal(job.payload).text.match(/\b[0-9]{6}\b/)[0];assert.ok(!JSON.stringify(edited).includes(code));
  const verify=(c,otp=code)=>c.request('/auth/business-signup/verify','POST',{challenge:edited.challenge,otp});
  assert.equal((await verify(stranger)).status,400);assert.equal((await verify(owner,code==='00000000'?'11111111':'00000000')).status,400);
  assert.equal((await verify(owner)).status,200);

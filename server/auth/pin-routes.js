@@ -10,6 +10,7 @@ import {limit,digest,hashPassword,randomToken,safeEqual} from './security.js';
 import {seal,unseal} from './sealed.js';
 import {verifySecondFactor} from './protection.js';
 import {enqueueMail} from '../mail-queue.js';
+import {otpEmail} from './otp-email.js';
 import {pinAvailable,pinEmailAvailable,mobileNumber,pinValue,pinDigest,hashPin,verifyPin,verifyAccountCredential} from './pin-security.js';
 import {createIdentity,validateInvitation} from './registration.js';
 
@@ -36,7 +37,8 @@ async function queueCode(db,req,{purpose,email,mobile,userId=null,revision=null,
  const accountLabel=context?.accountType||(userId?(await db.query('SELECT account_type FROM users WHERE id=$1',[userId])).rows[0]?.account_type:null)||'account';
  const id=randomUUID(),code=String(randomInt(0,1000000)).padStart(6,'0'),expires=new Date(Date.now()+600000);
  await db.query('INSERT INTO pin_challenges(id,purpose,user_id,email,mobile,session_hash,credential_revision,code_hash,context,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[id,purpose,userId,email,mobile,req.session.token_hash,revision,pinDigest('otp',id+':'+code),context?seal(context):null,expires]);
- await enqueueMail(db,{kind:'pin_otp',userId,email,referenceHash:id,subject:purpose==='reset'?'Reset your MY Solar PIN':'Verify your MY Solar recovery email',text:'Account: '+accountLabel+'; mobile ending '+mobile.slice(-4)+'. Your MY Solar email verification code is '+code+'. It expires in 10 minutes. Never share this code. If you did not request it, ignore this email.',expiresAt:expires});
+ const title=purpose==='reset'?'Reset your MY Solar PIN':purpose==='signup'?'Verify your MY Solar email':'Confirm your MY Solar mobile sign-in',description=`${accountLabel} account · mobile ending ${mobile.slice(-4)}.`;
+ await enqueueMail(db,{kind:'pin_otp',userId,email,referenceHash:id,subject:title,text:description+' Your MY Solar email verification code is '+code+'. It expires in 10 minutes. Never share this code. If you did not request it, ignore this email.',html:otpEmail({title,code,description,expiry:'10 minutes'}),expiresAt:expires});
  await audit(db,{actor:userId,action:'auth.pin_code_queued',metadata:{purpose}});return id;
 }
 async function checkedChallenge(db,req,id,purpose,code){

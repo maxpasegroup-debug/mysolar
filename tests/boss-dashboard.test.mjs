@@ -55,7 +55,12 @@ test('owner view preserves role boundary and uses real values with honest unavai
  const html=boss.page({cards:[],priorities:[],outstanding:null,boss:{sales:null,activeQuotations:0,team:{activeEmployees:0,overdueTasks:null}}});
  assert.match(html,/Unavailable/);assert.match(html,/Attendance and leave tracking are not available/);assert.match(html,/Coming soon/);assert.match(html,/Not connected/);assert.doesNotMatch(html,/href="#\/distributor\/new\?kind=invoices"/);assert.doesNotMatch(html,/href="#\/distributor\/accounts"/);
  assert.match(html,/href="#\/distributor\/quotation\/new"/);assert.doesNotMatch(html,/4,86,000|1,24,500/);
+ assert.match(html,/href="#\/distributor\/sales-booster"/);assert.match(html,/Online lead automation · Coming soon/);
  account.activeCompany.role='sales';assert.equal(boss.enabled(),false);account.activeCompany.role='owner';account.activeCompany.lifecycle='draft';assert.equal(boss.enabled(),true);
+});
+test('Sales Booster discovery stays role-gated and makes no integration claim',()=>{
+ const {boss,account}=ui(['customers.manage']);account.navAllowed=url=>url!=='/distributor/sales-booster';const html=boss.page({cards:[],priorities:[],outstanding:null,boss:{sales:null,activeQuotations:0,team:null}});assert.doesNotMatch(html,/href="#\/distributor\/sales-booster"/);
+ account.navAllowed=url=>url==='/distributor/sales-booster';const visible=boss.page({cards:[],priorities:[],outstanding:null,boss:{sales:null,activeQuotations:0,team:null}});assert.match(visible,/href="#\/distributor\/sales-booster"/);assert.doesNotMatch(visible,/connected to Facebook|connected to WhatsApp/i);
 });
 test('all inactive owner states use the Boss design without pretending activation or fetching operational totals',()=>{
  const {boss,account}=ui([]);

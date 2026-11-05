@@ -7,22 +7,36 @@ window.Workspace=(()=>{
   both:{label:'Combined sales & installation',description:'Sell solar equipment and deliver installation work.',services:['solar_panels','inverters','batteries','rooftop_installation','maintenance'],rooftop:true}
  };
  const groups=[
-  ['Sales','file',[['/distributor/crm','Leads & follow-ups'],['/distributor/leads','Customer enquiries'],['/distributor/quotations','Quotations'],['/distributor/templates','Quotation templates'],['/distributor/orders','Orders']]],
-  ['Work','tool',[['/distributor/tasks','My tasks'],['/distributor/field','My field work'],['/distributor/work-reports','My work updates'],['/distributor/projects','Installations'],['/distributor/equipment','Equipment passports'],['/distributor/service','Service requests'],['/distributor/service-contracts','Maintenance commitments'],['/distributor/inventory','Inventory'],['/distributor/procurement','Purchases'],['/distributor/suppliers','Suppliers']]],
-  ['Customers','users',[['/distributor/customers','Customers'],['/distributor/import','Import records']]],
-  ['Company','settings',[['/distributor/settings','Profile & settings'],['/distributor/setup','Company setup'],['/distributor/team','Team'],['/distributor/public-profile','My Public Profile'],['/distributor/audit','Audit trail'],['/distributor/funding','Loans & subsidies'],['/distributor/accounts','Customer invoices'],['/distributor/payables','Supplier bills'],['/distributor/reports','Management reports'],['/distributor/automation','Reminders & automation'],['/distributor/partners','B2B partners'],['/distributor/branding','Brand identity'],['/distributor/website','Branded page'],['/distributor/service-areas','Service areas'],['/distributor/offers','My offers'],['/distributor/catalogue','Energy catalogue'],['/distributor/subscription','Plan & access status']]]
+  ['Customers','users',[
+   ['/distributor/customers','All customers'],['/distributor/crm','Follow-ups'],['/distributor/leads','New enquiries'],['/distributor/marketplace-leads','MY SOLAR enquiries'],['/distributor/import','Import customers']
+  ]],
+  ['Sales','file',[
+    ['/distributor/quotation/new','Create quotation'],['/distributor/quotations','All quotations'],['/distributor/templates','Quotation templates'],['/distributor/orders','Orders'],['/distributor/sales-booster','Sales Booster']
+  ]],
+  ['Stock & purchases','box',[
+   ['/distributor/inventory','Available stock'],['/distributor/catalogue','Products & items'],['/distributor/offers','Product offers'],['/distributor/procurement','Purchases'],['/distributor/suppliers','Suppliers']
+  ]],
+  ['My work','tool',[
+   ['/distributor/tasks','My tasks'],['/distributor/field','Field work'],['/distributor/work-reports','Work updates'],['/distributor/projects','Installations'],['/distributor/equipment','Equipment records'],['/distributor/service','Service requests'],['/distributor/service-contracts','Maintenance plans'],['/distributor/automation','Reminders']
+  ]],
+  ['More','settings',[
+   ['/distributor/team','Team'],['/distributor/setup','Company setup'],['/distributor/settings','Profile & settings'],['/distributor/public-profile','Public company profile'],['/distributor/service-areas','Service areas'],['/distributor/accounts','Invoices & money to collect'],['/distributor/payables','Supplier bills'],['/distributor/reports','Business performance'],['/distributor/audit','Activity history'],['/distributor/partners','Business partners'],['/distributor/funding','Loans & subsidies'],['/distributor/branding','Brand identity'],['/distributor/website','Branded website'],['/distributor/white-label','Own the Automation'],['/distributor/subscription','Plan & access'],['/distributor/activate','Choose a plan'],['/distributor/notifications','Notifications'],['/account-security','Account security'],['/companies','Switch company'],['/sia','SIA assistant']
+  ]]
  ];
- const setupPaths=new Set(['/distributor/public-profile','/distributor/white-label','/distributor/setup','/distributor/branding','/distributor/team','/distributor/subscription','/distributor/settings']);
- function navigation(allowed,current,active=true,preview=false){
-  return groups.map(([title,symbol,items])=>({title,symbol,items:items.filter(([url])=>allowed(url)&&(active||preview||setupPaths.has(url))),open:items.some(([url])=>url===current)})).filter(g=>g.items.length);
- }
+  const setupPaths=new Set(['/distributor/marketplace-leads','/distributor/activate','/distributor/public-profile','/distributor/white-label','/distributor/dashboard','/distributor/setup','/distributor/branding','/distributor/team','/distributor/settings','/distributor/subscription','/distributor/service-areas','/companies','/account-security']);
+  function navigation(allowed,current,active=true,preview=false){return groups.map(([title,symbol,items])=>({title,symbol,items:items.filter(([url])=>allowed(url)&&(active||preview||setupPaths.has(url))),open:items.some(([url])=>url===current)})).filter(group=>group.items.length);}
  function navigationMarkup(current){
   const demo=Account.isDemo(),company=Account.activeCompany,preview=!demo&&(!company||company.lifecycle!=='active'||window.BusinessAccess?.locked()),active=!preview,preset=currentPreset(),allowed=url=>preview?Account.navPreviewAllowed(url):Account.navAllowed(url);
-  const item=(url,label,symbol)=>{const locked=preview&&!setupPaths.has(url);return link(url,icon(symbol)+'<span>'+t(preset==='installer'&&url==='/distributor/projects'?'Projects & installations':label)+'</span>'+(locked?'<small class="nav-lock" aria-label="Preview; setup and plan required">Preview</small>':''), 'nav-item '+(current===url?'active':'')+(locked?' nav-item-preview':''));};
-  return item('/distributor/dashboard','Home','grid')+(allowed('/distributor/marketplace-leads')?item('/distributor/marketplace-leads','Leads','users'):'')+(allowed('/distributor/sales-booster')?item('/distributor/sales-booster','Sales Booster','spark'):'')+navigation(allowed,current,active,preview).map(g=>{
-   const primary=g.items.filter(([url])=>preferred(url,preset)||url===current),other=g.items.filter(([url])=>!preferred(url,preset)&&url!==current);
-   return '<details class="workspace-nav-group" '+(g.open?'open':'')+'><summary>'+icon(g.symbol)+'<span>'+t(g.title)+'</span></summary><div>'+primary.map(([url,label])=>item(url,label,g.symbol)).join('')+(other.length?'<details class="workspace-nav-other"><summary>'+t('Other permitted tools')+'</summary>'+other.map(([url,label])=>item(url,label,g.symbol)).join('')+'</details>':'')+'</div></details>';
-  }).join('')+(allowed('/distributor/notifications')?item('/distributor/notifications','Notifications','bell'):'');
+  const item=(url,label,symbol)=>{const locked=preview&&!setupPaths.has(url),comingSoon=url==='/distributor/sales-booster';return link(url,icon(symbol)+'<span>'+t(preset==='installer'&&url==='/distributor/projects'?'Installations':label)+'</span>'+(comingSoon?'<small class="nav-lock">Coming soon</small>':locked?'<small class="nav-lock" aria-label="Preview; setup and plan required">Preview</small>':''), 'nav-item '+(current===url?'active':'')+(locked?' nav-item-preview':'')+(url==='/distributor/quotation/new'?' nav-item-action':''));};
+  return item('/distributor/dashboard','Home','home')+groups.map(([title,symbol,items])=>{const visible=items.filter(([url])=>allowed(url));if(!visible.length)return '';const open=visible.some(([url])=>url===current)||title==='More'&&current==='/account-security';return '<details class="workspace-nav-group" '+(open?'open':'')+'><summary>'+icon(symbol)+'<span>'+t(title)+'</span></summary><div>'+visible.map(([url,label])=>item(url,label,url==='/distributor/quotation/new'?'spark':symbol)).join('')+'</div></details>';}).join('');
+ }
+  function mobileNavigation(currentPath='/distributor/dashboard'){
+  const preview=!Account.isDemo()&&(!Account.activeCompany||Account.activeCompany.lifecycle!=='active'||window.BusinessAccess?.locked()),allowed=url=>preview?Account.navPreviewAllowed(url):Account.navAllowed(url);
+  const work=allowed('/distributor/tasks')?'/distributor/tasks':allowed('/distributor/projects')?'/distributor/projects':'/distributor/field';
+  const choices=[['/distributor/dashboard','Home','home'],['/distributor/customers','Customers','users'],[allowed('/distributor/quotation/new')?'/distributor/quotation/new':'/distributor/quotations','Sales','file'],[work,'My work','tool']];
+   const customerRoutes=['/distributor/customers','/distributor/crm','/distributor/leads','/distributor/marketplace-leads','/distributor/import'],salesRoutes=['/distributor/quotation/new','/distributor/quotations','/distributor/templates','/distributor/orders','/distributor/sales-booster'],workRoutes=['/distributor/tasks','/distributor/field','/distributor/work-reports','/distributor/projects','/distributor/equipment','/distributor/service','/distributor/service-contracts','/distributor/automation'];
+   const sectionRoutes={Home:['/distributor/dashboard'],Customers:customerRoutes,Sales:salesRoutes,'My work':workRoutes};
+   return '<nav class="business-bottom-nav" aria-label="Business shortcuts">'+choices.filter(([url])=>allowed(url)).map(([url,label,symbol])=>link(url,icon(symbol)+'<span>'+t(label)+'</span>','business-bottom-link '+(sectionRoutes[label].includes(currentPath)?'active':''))).join('')+'<button type="button" class="business-bottom-link" data-action="menu" aria-label="Open more business sections">'+icon('menu')+'<span>More</span></button></nav>';
  }
  const presetTypes={distributor:'distributor',dealer:'distributor',installer:'installer',both:'both'};
  function currentPreset(data={}){const p=data.profile||Account.activeCompany||{};return Object.hasOwn(presets,p.business_preset)?p.business_preset:Object.hasOwn(presets,p.business_type)?p.business_type:'distributor';}
@@ -75,5 +89,5 @@ window.Workspace=(()=>{
   const done=steps.filter(([,key])=>Number(counts[key])>0).length;
   return `<details class="workspace-start panel" ${done<steps.length?'open':''}><summary>Getting started · ${done} of ${steps.length} complete</summary><ol>${steps.map(([,key,title,url,description])=>`<li><span class="workspace-step-state">${Number(counts[key])>0?icon('check'):icon('arrow')}</span><div><strong>${escapeHTML(title)}</strong><p>${escapeHTML(description)}</p>${Number(counts[key])>0?'<small>Saved in your authorised workspace.</small>':link(url,title+' '+icon('arrow'),'text-link')}</div></li>`).join('')}</ol></details>`;
  }
- return {currentPreset,selectedPreset,preferred,osOverview,osLaunchpad,presets,navigation,navigationMarkup,presetChoices,selectedBusinessType,journey,facilities,consultation,brandedOffer,businessDefaults,activation,firstSteps};
+ return {currentPreset,selectedPreset,preferred,osOverview,osLaunchpad,presets,navigation,navigationMarkup,mobileNavigation,presetChoices,selectedBusinessType,journey,facilities,consultation,brandedOffer,businessDefaults,activation,firstSteps};
 })();

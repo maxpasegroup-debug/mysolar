@@ -16,7 +16,6 @@ whiteLabel.post('/companies/current/white-label-requests',async(req,res)=>{v.bod
 whiteLabel.post('/companies/current/sales-booster-requests',async(req,res)=>{
  v.body(req.body,['operationKey','message','contactPreference']);const key=v.uuid(req.body.operationKey),details=v.text(req.body.message,'request details',1000,10),contact=v.choice(req.body.contactPreference,['email','phone'],'contact preference');
  res.status(201).json(await withCompany(req,'company.manage',async(db,ctx)=>{
-  if(ctx.lifecycle!=='active')throw new HttpError(403,'COMPANY_NOT_ACTIVE','Finish company activation before requesting a Sales Booster consultation.');
   const message='Sales Booster request: '+details,fingerprint=createHash('sha256').update(JSON.stringify([message,contact,ctx.userId])).digest('hex'),old=(await db.query('SELECT id,fingerprint FROM white_label_requests WHERE company_id=$1 AND operation_key=$2',[ctx.companyId,key])).rows[0];
   if(old){if(old.fingerprint!==fingerprint)throw new HttpError(409,'REQUEST_CHANGED','This request key is already used for different details.');return {id:old.id,emailQueued:false,message:'Your request is already recorded. Check the request status in the MY SOLAR team follow-up.'};}
   const id=randomUUID(),company=(await db.query('SELECT name,business_email FROM companies WHERE id=$1',[ctx.companyId])).rows[0];

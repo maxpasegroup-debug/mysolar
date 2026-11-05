@@ -2,7 +2,7 @@ import {commercialReady} from '../legal/catalogue.js';
 import {companyLegalAcceptance} from '../legal/routes.js';
 import {assertCommercialAcceptance} from '../legal/service.js';
 import {createPaymentSession,applyVerifiedProviderEvent} from './payments.js';
-import {freeTrialConfiguration,startFreeTrial} from './free-trial.js';
+import {freeTrialConfiguration} from './free-trial.js';
 import {policy} from './policy.js';
 import {Router,raw} from 'express';
 import {randomUUID} from 'node:crypto';
@@ -22,10 +22,7 @@ const owner=ctx=>{if(ctx.role!=='owner')throw new HttpError(403,'OWNER_REQUIRED'
 osRoutes.use(requireUser);osRoutes.use((req,res,next)=>['GET','HEAD'].includes(req.method)?next():csrf(req,res,next));
 osRoutes.post('/legal-accept',companyLegalAcceptance);
 osRoutes.post('/trial',async(req,res)=>{
- v.body(req.body,['planVersionId','confirm']);const version=v.uuid(req.body.planVersionId);if(req.body.confirm!==true)throw badInput('Confirm starting the seven-day free trial. No payment or autopay is required.');
- await limit(req,'os-free-trial',req.session.user_id,10,86400);
- const trial=await withCompany(req,'subscription.read',(db,ctx)=>startFreeTrial(db,ctx,version));
- res.status(trial.replayed?200:201).json({...trial,message:trial.replayed?'Your existing free trial is active. Its dates have not changed.':'Your seven-day free trial is active. No payment or autopay was set up.'});
+ throw new HttpError(410,'FREE_TRIAL_UNAVAILABLE','New free trials are no longer offered. Choose an available subscription to start Solar OS work. Existing trial agreements keep their recorded terms.');
 });
 osRoutes.get('/leads',async(req,res)=>res.json(await withCompany(req,'company.setup.read',async(db,ctx)=>{
  owner(ctx);const d=await setupData(db,ctx.companyId);const published=(await db.query('SELECT 1 FROM marketplace_vendors WHERE id=$1',[ctx.companyId])).rowCount===1;
@@ -37,9 +34,9 @@ osRoutes.get('/plans',async(req,res)=>res.json(await withCompany(req,'subscripti
  const plans=rows.map(row=>{let eligible=false;try{renewalAmount(row.terms);eligible=approvedOsOffer(row.code,row.terms)&&row.mode===settings.mode&&settings.available&&commercialReady();}catch{}return {...row,eligible};});
  const contract=(await db.query('SELECT * FROM os_billing_contracts WHERE company_id=$1 ORDER BY consent_at DESC LIMIT 1',[ctx.companyId])).rows[0];
  const current=(await db.query("SELECT s.terms->>'name' AS name,s.status,s.start_at,s.end_at,s.activation_source FROM company_commercial_state cs JOIN company_subscriptions s ON s.id=cs.current_subscription_id AND s.company_id=cs.company_id WHERE cs.company_id=$1",[ctx.companyId])).rows[0]||null;
- const access=await osAccess(db,ctx.companyId),company=(await db.query('SELECT name,lifecycle,status FROM companies WHERE id=$1',[ctx.companyId])).rows[0],history=(await db.query('SELECT 1 FROM company_subscriptions WHERE company_id=$1 LIMIT 1',[ctx.companyId])).rowCount,verified=(await db.query("SELECT 1 FROM users WHERE id=$1 AND status='active' AND email_verified_at IS NOT NULL",[ctx.userId])).rowCount;
- const freeTrial=await freeTrialConfiguration(db),trial=(await db.query('SELECT id,start_at,end_at FROM company_subscriptions WHERE company_id=$1 AND trial_granted ORDER BY created_at,id LIMIT 1',[ctx.companyId])).rows[0]||null;
- return {plans,current,policy:await policy(db,ctx.companyId),contract:publicContract(contract),access,company,freeTrial,trial,trialEligible:Boolean(freeTrial.configured&&access.managed&&company.status==='active'&&company.lifecycle==='active'&&!contract&&!history&&verified),subscriptionEligible:Boolean(access.managed&&company.status==='active'&&company.lifecycle==='active'&&trial&&Date.parse(trial.end_at)<=Date.now()&&!access.unlocked&&(!contract||['failed','cancelled'].includes(contract.state))&&verified),legalReady:commercialReady(),billingAvailable:settings.available&&commercialReady(),mode:settings.available?settings.mode:'disabled',reminders:contract?(await db.query('SELECT r.day,r.due_at,r.status,m.status AS delivery_state,m.last_code FROM os_trial_reminders r LEFT JOIN mail_jobs m ON m.id=r.mail_id WHERE r.contract_id=$1 ORDER BY r.day',[contract.id])).rows:[],trialDays:7};
+ const access=await osAccess(db,ctx.companyId),company=(await db.query('SELECT name,lifecycle,status FROM companies WHERE id=$1',[ctx.companyId])).rows[0],verified=(await db.query("SELECT 1 FROM users WHERE id=$1 AND status='active' AND email_verified_at IS NOT NULL",[ctx.userId])).rowCount;
+ const trial=(await db.query('SELECT id,start_at,end_at FROM company_subscriptions WHERE company_id=$1 AND trial_granted ORDER BY created_at,id LIMIT 1',[ctx.companyId])).rows[0]||null;
+ return {plans,current,policy:await policy(db,ctx.companyId),contract:publicContract(contract),access,company,freeTrial:null,trial,trialEligible:false,subscriptionEligible:Boolean(access.managed&&company.status==='active'&&company.lifecycle==='active'&&!access.unlocked&&(!contract||['failed','cancelled'].includes(contract.state))&&(!trial||Date.parse(trial.end_at)<=Date.now())&&verified),legalReady:commercialReady(),billingAvailable:settings.available&&commercialReady(),mode:settings.available?settings.mode:'disabled',reminders:contract?(await db.query('SELECT r.day,r.due_at,r.status,m.status AS delivery_state,m.last_code FROM os_trial_reminders r LEFT JOIN mail_jobs m ON m.id=r.mail_id WHERE r.contract_id=$1 ORDER BY r.day',[contract.id])).rows:[]};
 })));
 osRoutes.post('/checkout',async(req,res)=>{
  v.body(req.body,['operationKey','planVersionId','consent']);if(req.body.consent!==true)throw badInput('Review the renewal price, dates, reminder policy and cancellation terms before authorising autopay.');const input={operationKey:v.uuid(req.body.operationKey),planVersionId:v.uuid(req.body.planVersionId)};
@@ -63,6 +60,7 @@ billingAdmin.use(requireUser);billingAdmin.use((req,res,next)=>['GET','HEAD'].in
 billingAdmin.get('/',async(req,res)=>res.json(await withPlatform(req,'platform.commercial.read',async db=>({freeTrial:await freeTrialConfiguration(db),mode:billingConfiguration().mode,available:billingConfiguration().available,plans:(await db.query('SELECT p.code,p.status,v.id AS version_id,v.terms,m.provider_plan_id,m.mode,m.total_count FROM commercial_plans p JOIN commercial_plan_versions v ON v.id=p.current_version_id LEFT JOIN razorpay_plan_mappings m ON m.plan_version_id=v.id ORDER BY p.created_at DESC LIMIT 30')).rows,unresolved:(await db.query("SELECT id,company_id,state,mode,consent_at FROM os_billing_contracts WHERE state IN ('preparing','unknown','cancel_requested','review_required') ORDER BY consent_at LIMIT 50")).rows}))));
 billingAdmin.post('/trial-config',async(req,res)=>{
  v.body(req.body,['planVersionId','enabled','revision','reason']);const version=v.uuid(req.body.planVersionId),reason=v.text(req.body.reason,'review reason',500,10);if(typeof req.body.enabled!=='boolean'||!Number.isSafeInteger(req.body.revision)||req.body.revision<0)throw badInput('Review the trial configuration and refresh before saving.');
+ if(req.body.enabled)throw new HttpError(410,'FREE_TRIALS_DISABLED','New Solar OS free trials are disabled. Existing recorded agreements are unchanged.');
  await withPlatform(req,'platform.commercial.subscriptions',async(db,ctx)=>{
   await db.query("SELECT pg_advisory_xact_lock(hashtext('os-free-trial-configuration'))");
   const old=(await db.query('SELECT * FROM os_trial_configuration WHERE id=true FOR UPDATE')).rows[0];if((old?.revision||0)!==req.body.revision)throw new HttpError(409,'TRIAL_CONFIG_CHANGED','Trial configuration changed. Refresh before saving.');

@@ -19,7 +19,7 @@ export async function requirePro(db,companyId) {
  if(!access.enabled)throw new HttpError(403,'PRO_REQUIRED','This growth feature requires a current PRO subscription. Contact the platform administrator through Plan & access status for approved terms. Existing authorized records are preserved.');
  return access;
 }
-export async function requireStaffEntitlement(db,companyId,role) {if(role===PART_TIME_ROLE)await requirePro(db,companyId);}
+export async function requireStaffEntitlement(db,companyId,role) {if(role!==PART_TIME_ROLE)return;const state=(await db.query("SELECT EXISTS(SELECT 1 FROM company_os_enrolment WHERE company_id=$1) AS enrolled,coalesce((commercial_policy($1::uuid)->>'writable')::boolean,false) AS writable",[companyId])).rows[0];if(state?.enrolled&&!state.writable)return;await requirePro(db,companyId);}
 export function validateGrowthTerms(code,terms) {
  // Central commercial validation validates the configured price, currency and tax.
  // A reserved feature code does not impose a new price on historical agreements.

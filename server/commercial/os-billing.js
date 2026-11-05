@@ -15,8 +15,8 @@ export async function prepareContract(db,ctx,{operationKey,planVersionId},settin
  if((await db.query('SELECT status FROM companies WHERE id=$1',[ctx.companyId])).rows[0]?.status!=='active')throw new HttpError(403,'COMPANY_SUSPENDED','Company access is suspended. Contact the platform team.');
  if(ctx.lifecycle!=='active')throw new HttpError(409,'COMPANY_NOT_ACTIVE','Complete company setup and activation review before subscribing.');
  if(!(await db.query('SELECT 1 FROM company_os_enrolment WHERE company_id=$1',[ctx.companyId])).rowCount)throw new HttpError(409,'EXISTING_ACCESS_POLICY','This company uses an existing access agreement. Contact the platform team before changing its terms.');
- const trial=(await db.query('SELECT * FROM company_subscriptions WHERE company_id=$1 AND trial_granted ORDER BY created_at,id LIMIT 1',[ctx.companyId])).rows[0];
- if(!trial||Date.parse(trial.end_at)>Date.now())throw new HttpError(409,'TRIAL_NOT_FINISHED','Your free trial needs no autopay. Review plans now and subscribe after its recorded end.');
+ const trial=(await db.query('SELECT * FROM company_subscriptions WHERE company_id=$1 AND trial_granted ORDER BY created_at,id LIMIT 1',[ctx.companyId])).rows[0]||null;
+ if(trial&&Date.parse(trial.end_at)>Date.now())throw new HttpError(409,'CURRENT_ACCESS_EXISTS','Your existing trial is still active. You can review subscription choices before it ends.');
  const current=(await db.query('SELECT s.* FROM company_commercial_state cs JOIN company_subscriptions s ON s.id=cs.current_subscription_id AND s.company_id=cs.company_id WHERE cs.company_id=$1',[ctx.companyId])).rows[0];
  if(current&&['active','trial'].includes(current.status)&&Date.parse(current.end_at)>Date.now())throw new HttpError(409,'CURRENT_ACCESS_EXISTS','A current agreement already provides access. Review that agreement instead of buying again.');
  if((await db.query("SELECT 1 FROM os_billing_contracts WHERE company_id=$1 AND state NOT IN ('failed','cancelled') LIMIT 1",[ctx.companyId])).rowCount)throw new HttpError(409,'MANDATE_RECONCILIATION_REQUIRED','Review your existing subscription request before creating another.');
@@ -24,13 +24,13 @@ export async function prepareContract(db,ctx,{operationKey,planVersionId},settin
  if(!row||!approvedOsOffer(row.code,row.terms)||row.mode!==settings.mode||Date.parse(row.terms.effectiveFrom)>Date.now()||row.terms.effectiveTo&&Date.parse(row.terms.effectiveTo)<=Date.now())throw new HttpError(409,'PLAN_UNAVAILABLE','Select a reviewed, active monthly plan with its approved team allowance, and a matching provider configuration.');renewalAmount(row.terms);
  const cfg=(await db.query('SELECT * FROM commercial_settings_versions WHERE effective_at<=now() ORDER BY effective_at DESC,id DESC LIMIT 1')).rows[0];if(!cfg)throw new HttpError(503,'COMMERCIAL_UNAVAILABLE','Commercial settings are unavailable.');
  const revision=(await db.query('SELECT revision FROM company_commercial_state WHERE company_id=$1',[ctx.companyId])).rows[0]?.revision||0;
- const id=randomUUID();const contract=(await db.query(`INSERT INTO os_billing_contracts(id,company_id,owner_id,operation_key,plan_id,plan_version_id,terms,setup_terms,settings_version_id,commercial_revision,mode,state,trial_start,trial_end,purpose,consent_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'preparing',$12,$13,'post_trial_subscription','os-paid-v2') RETURNING *`,[id,ctx.companyId,ctx.userId,operationKey,row.plan_id,row.version_id,row.terms,cfg.data.setupFee,cfg.id,revision,settings.mode,trial.start_at,trial.end_at])).rows[0];
- await audit(db,{actor:ctx.userId,company:ctx.companyId,action:'commercial.subscription_consent_recorded',target:id,metadata:{planVersion:row.version_id,mode:settings.mode,priorTrialEnd:trial.end_at,consentVersion:'os-paid-v2'}});
+ const purpose=trial?'post_trial_subscription':'direct_subscription',id=randomUUID();const contract=(await db.query(`INSERT INTO os_billing_contracts(id,company_id,owner_id,operation_key,plan_id,plan_version_id,terms,setup_terms,settings_version_id,commercial_revision,mode,state,trial_start,trial_end,purpose,consent_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'preparing',$12,$13,$14,'os-paid-v3') RETURNING *`,[id,ctx.companyId,ctx.userId,operationKey,row.plan_id,row.version_id,row.terms,cfg.data.setupFee,cfg.id,revision,settings.mode,trial?.start_at||null,trial?.end_at||null,purpose])).rows[0];
+ await audit(db,{actor:ctx.userId,company:ctx.companyId,action:'commercial.subscription_consent_recorded',target:id,metadata:{planVersion:row.version_id,mode:settings.mode,purpose,priorTrialEnd:trial?.end_at||null,consentVersion:'os-paid-v3'}});
  return {contract,mapping:row,replayed:false};
 }
 export async function createProviderContract(provider,contract,mapping){
  const plan=await provider.request('GET','plans/'+providerId(mapping.provider_plan_id,'plan'));if(!planMatches(plan,contract.terms))throw new HttpError(409,'PROVIDER_PLAN_MISMATCH','The mapped provider price or billing interval differs from the approved plan.');
- const paid=contract.purpose==='post_trial_subscription';
+ const paid=contract.purpose!=='legacy_trial_mandate';
  const sub=await provider.request('POST','subscriptions',{plan_id:mapping.provider_plan_id,total_count:mapping.total_count,quantity:1,customer_notify:true,...(paid?{}:{start_at:Math.floor(new Date(contract.trial_end).getTime()/1000)}),expire_by:Math.floor(Date.now()/1000)+900,notes:{mysolar_contract_id:contract.id}});
  providerId(sub.id,'sub');if(sub.plan_id!==mapping.provider_plan_id||sub.status!=='created'||!paid&&sub.start_at!==Math.floor(new Date(contract.trial_end).getTime()/1000))throw new HttpError(502,'BILLING_RESULT_UNKNOWN','The provider mandate could not be matched. Contact support; do not create another.');return {id:sub.id,url:safeCheckout(sub.short_url)};
 }
@@ -46,13 +46,13 @@ export async function assignAccessPeriod(db,c,status,start,end,trial){
  return id;
 }
 export function capturedInvoice(invoice,payment,c){
- return payment?.status==='captured'&&payment.currency==='INR'&&payment.amount===renewalAmount(c.terms)&&invoice?.status==='paid'&&invoice.currency==='INR'&&invoice.amount_paid===payment.amount&&invoice.payment_id===payment.id&&payment.invoice_id===invoice.id&&(!invoice.subscription_id||invoice.subscription_id===c.provider_subscription_id)&&Number.isSafeInteger(invoice.billing_start)&&Number.isSafeInteger(invoice.billing_end)&&invoice.billing_end>invoice.billing_start&&invoice.billing_start>=Math.floor(new Date(c.trial_end).getTime()/1000);
+ return payment?.status==='captured'&&payment.currency==='INR'&&payment.amount===renewalAmount(c.terms)&&invoice?.status==='paid'&&invoice.currency==='INR'&&invoice.amount_paid===payment.amount&&invoice.payment_id===payment.id&&payment.invoice_id===invoice.id&&(!invoice.subscription_id||invoice.subscription_id===c.provider_subscription_id)&&Number.isSafeInteger(invoice.billing_start)&&Number.isSafeInteger(invoice.billing_end)&&invoice.billing_end>invoice.billing_start&&(c.purpose!=='legacy_trial_mandate'||invoice.billing_start>=Math.floor(new Date(c.trial_end).getTime()/1000));
 }
 export async function processBillingEvent({db,contract:c,event,providerSubscription:sub,payment,invoice,eventId,hash,now=Date.now()}){
  if(!['created','authenticated','active','pending','halted','cancelled','completed','paused'].includes(sub.status))throw new Error('BILLING_PROVIDER_STATE_INVALID');
  const inserted=await db.query('INSERT INTO os_billing_events(payload_hash,provider_event_id,contract_id,kind) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING payload_hash',[hash,eventId,c.id,event.event]);if(!inserted.rowCount)return {duplicate:true};
  if(c.mode!==event.mode)throw new Error('BILLING_MODE_MISMATCH');
- const mapped=(await db.query('SELECT provider_plan_id FROM razorpay_plan_mappings WHERE plan_version_id=$1',[c.plan_version_id])).rows[0];if(!mapped||sub.id!==c.provider_subscription_id||sub.plan_id!==mapped.provider_plan_id||c.purpose!=='post_trial_subscription'&&sub.start_at!==Math.floor(new Date(c.trial_end).getTime()/1000))throw new Error('BILLING_PROVIDER_CONTEXT_MISMATCH');
+ const mapped=(await db.query('SELECT provider_plan_id FROM razorpay_plan_mappings WHERE plan_version_id=$1',[c.plan_version_id])).rows[0];if(!mapped||sub.id!==c.provider_subscription_id||sub.plan_id!==mapped.provider_plan_id||c.purpose==='legacy_trial_mandate'&&sub.start_at!==Math.floor(new Date(c.trial_end).getTime()/1000))throw new Error('BILLING_PROVIDER_CONTEXT_MISMATCH');
  if(event.event==='subscription.charged'){
   if(!capturedInvoice(invoice,payment,c))throw new Error('BILLING_CAPTURE_NOT_VERIFIED');
   const recorded=await db.query('INSERT INTO os_billing_payments(provider_payment_id,contract_id,amount_paise,currency,period_start,period_end) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING provider_payment_id',[payment.id,c.id,payment.amount,payment.currency,new Date(invoice.billing_start*1000),new Date(invoice.billing_end*1000)]);if(!recorded.rowCount)return {duplicate:true};
@@ -66,7 +66,7 @@ export async function processBillingEvent({db,contract:c,event,providerSubscript
  if(['cancelled','completed'].includes(sub.status)){
   await db.query("UPDATE os_billing_contracts SET state='cancelled' WHERE id=$1",[c.id]);await db.query("UPDATE os_trial_reminders SET status='cancelled' WHERE contract_id=$1 AND status IN ('pending','blocked')",[c.id]);await audit(db,{actor:c.owner_id,company:c.company_id,action:'commercial.mandate_stopped',target:c.id});return {cancelled:true};
  }
- if(c.purpose!=='post_trial_subscription'&&['created','preparing','unknown'].includes(c.state)&&['authenticated','active'].includes(sub.status)&&new Date(c.trial_end).getTime()>now){
+ if(c.purpose==='legacy_trial_mandate'&&['created','preparing','unknown'].includes(c.state)&&['authenticated','active'].includes(sub.status)&&new Date(c.trial_end).getTime()>now){
   if((await db.query('SELECT 1 FROM company_subscriptions WHERE company_id=$1 AND trial_granted',[c.company_id])).rowCount)throw new Error('TRIAL_ALREADY_GRANTED');
   await assignAccessPeriod(db,c,'trial',c.trial_start,c.trial_end,true);await db.query("UPDATE os_billing_contracts SET state='trial' WHERE id=$1",[c.id]);
   for(const {day,due} of trialDates(new Date(c.trial_start)).reminders)await db.query('INSERT INTO os_trial_reminders(contract_id,day,due_at) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[c.id,day,due]);return {trial:true};

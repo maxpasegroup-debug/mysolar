@@ -127,7 +127,7 @@ window.Account = (() => {
     if(['/platform/locations','/platform/mail','/platform/operations','/platform/white-label-requests','/platform/costs'].includes(p))return ReleaseTools.page(p);
     if(p==='/platform/razorpay')return (state.platformPermissions||[]).includes('platform.commercial.read')?BusinessAccess.page(p):problem('Platform commercial access required.');
     if(p.startsWith('/platform')){const commercialPage=Commercial.page(p);if(commercialPage!==null)return commercialPage;const marketplacePage=Marketplace.page(p);return marketplacePage===null?Organization.page(p):marketplacePage;}
-    if(p==='/distributor/dashboard'&&!state.activeCompany)return new URLSearchParams(location.hash.split('?')[1]||'').get('setup')==='1'?SiaWelcome.setup():SiaWelcome.business();
+    if(p==='/distributor/dashboard'&&!state.activeCompany){const params=new URLSearchParams(location.hash.split('?')[1]||'');return params.get('setup')==='1'||!SiaWelcome.setupDismissed()?SiaWelcome.setup():SiaWelcome.business();}
     if(!p.startsWith('/customer/')&&!state.activeCompany)return companyPicker();
     if(!navAllowed(p))return problem('Your company role does not grant access to this screen.');
     if(window.BusinessAccess){const accessPage=BusinessAccess.page(p);if(accessPage!==null)return accessPage;}
@@ -144,7 +144,7 @@ window.Account = (() => {
     if(p==='/customer/dashboard')return dashboard(true);if(p==='/distributor/dashboard')return dashboard();if(p==='/customer/settings')return profilePage();if(p==='/distributor/settings')return companySettings();
     return futureModule(p);
   }
-  function channel(p,original){return p.startsWith('/platform')?'public':isPrivate(p)&&!isDemo()&&(state.loading||state.error||!state.user||(!p.startsWith('/customer/')&&!state.activeCompany))?'public':original;}
+  function channel(p,original){if(p.startsWith('/platform'))return 'public';if(p==='/distributor/dashboard'&&!isDemo()&&!state.loading&&!state.error&&businessAccount())return 'distributor';return isPrivate(p)&&!isDemo()&&(state.loading||state.error||!state.user||(!p.startsWith('/customer/')&&!state.activeCompany))?'public':original;}
   function person(){return {name:isDemo()?'Demo workspace':state.user?.name||'Your account',role:isDemo()?'Fictional preview':state.activeCompany?.role_label||(businessAccount()?'Business account':'Customer')};}
   function navigate(target){if(location.hash===`#${target}`)render();else location.hash=target;}
   async function createPersonalAccount(data,audience,options={}) {

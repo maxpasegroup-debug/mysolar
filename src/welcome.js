@@ -1,10 +1,12 @@
 /* Private company setup draft flow. Drafts contain no authentication credentials. */
 window.SiaWelcome=(()=>{
- const e=x=>escapeHTML(x??'');let pending=null;
- const resumeUrl='/distributor/dashboard?setup=1';
+ const e=x=>escapeHTML(x??'');let pending=null,dismissedInMemory=false;
+ const resumeUrl='/distributor/dashboard?setup=1',dismissKey=()=>`mysolar-company-setup-dismissed:${Account.user?.id||'user'}`;
+ function setupDismissed(){if(dismissedInMemory)return true;try{return localStorage.getItem(dismissKey())==='1';}catch{return false;}}
+ function rememberLater(){dismissedInMemory=true;try{localStorage.setItem(dismissKey(),'1');}catch{}}
  function business(){
   const user=Account.user,companies=Account.session.companies||[];
-  return '<section class="welcome-workspace" aria-labelledby="business-welcome"><nav aria-label="Welcome workspace">'+link('/distributor/dashboard','Welcome')+link(resumeUrl,'Company setup')+link('/account-security','Account security')+'<a href="/legal">Legal & privacy</a></nav><article class="panel">'+SiaOrb.markup({size:'small'})+'<p class="eyebrow">SIA · YOUR WORKSPACE GUIDE</p><h1 id="business-welcome">Welcome, '+e(user.name)+'.</h1><p>Your business account is ready. Prepare your company at your pace.</p><div class="welcome-status"><span>'+(user.emailVerified?'Email verified':'Email verification required')+'</span><span>Set up your company and invite your planned team first. Choose a subscription when you are ready to start Solar OS work.</span></div>'+(companies.length?'<p>Choose an existing workspace to continue without creating another company.</p>'+link('/companies','Choose my company','btn primary'):'<h2>Your next step</h2><p>Add your company details, customer listing and team plan. You can save and return any time.</p>'+link(resumeUrl,pending?.draft?'Resume company setup':'Set up my company','btn primary'))+'<p class="fine-print">Your draft stays private. Saving it does not create a company, publish a listing or start a subscription.</p>'+link('/products','Explore the marketplace','text-link')+'</article></section>';
+  return `<section class="precompany-dashboard"><header class="precompany-welcome"><p class="eyebrow">MY SOLAR BUSINESS WORKSPACE</p><h1>Welcome, ${e(user.name)}.</h1><p>Your company workspace starts with a few simple details.</p></header>${companies.length?`<section class="panel precompany-next"><p class="eyebrow">YOUR NEXT STEP</p><h2>Choose a company</h2><p>You already have a company workspace. Open it to continue.</p>${link('/companies','Choose my company','btn primary')}</section>`:`<section class="panel precompany-next"><div class="precompany-sia">${SiaOrb.markup({size:'small',label:'SIA setup guide'})}<span><strong>SIA setup guide</strong><small>One step at a time. You can save and return later.</small></span></div><p class="eyebrow">YOUR NEXT STEP</p><h2>${pending?.draft?'Continue company setup':'Set up your company'}</h2><p>Add your company details, customer listing, products and planned team. You can invite employees before choosing a subscription.</p>${link(resumeUrl,pending?.draft?'Resume setup':'Start company setup','btn primary')}</section><p class="precompany-note">Company setup and planned team invitations are available first. Choose a subscription when you are ready to start Solar OS work.</p>`}</section>`;
  }
  function setup(){
   const showDashboard=new URLSearchParams(location.hash.split('?')[1]||'').get('setup')==='1',resourceKey=showDashboard?'/distributor/dashboard':'/distributor/onboarding';
@@ -35,8 +37,7 @@ window.SiaWelcome=(()=>{
  }
  function decorate(){
   const modal=document.querySelector('.scs-dialog');
-  if(modal&&!modal.open){try{modal.showModal();}catch{modal.setAttribute('open','');}}
-  if(modal)modal.querySelector('#account-company-create [name=name]')?.focus({preventScroll:true});
+  if(modal&&!modal.open){try{modal.showModal();}catch{modal.setAttribute('open','');}modal.querySelector('#account-company-create [name=name]')?.focus({preventScroll:true});}
   const form=document.querySelector('#account-company-create');restore(form);
   if(form&&!form.querySelector('.scs-draft-status'))form.querySelector('.scs-actions')?.insertAdjacentHTML('beforeend','<p class="scs-draft-status" role="status" tabindex="-1"></p>');
  }
@@ -50,10 +51,11 @@ window.SiaWelcome=(()=>{
    const draft={flowVersion:2,fields,step:Number(form.dataset.step||0),products:[...form.querySelectorAll('[name=planProducts]:checked')].map(x=>x.value),listingServices:[...form.querySelectorAll('[name=listingServices]:checked')].map(x=>x.value),marketplaceRequested:form.elements.marketplaceRequested?.checked,team:[...form.querySelectorAll('[data-scs-role]:checked')].map(r=>({role:r.dataset.scsRole,count:Number(form.querySelector('[data-scs-count="'+r.dataset.scsRole+'"]').value||0)}))};
    const result=await Account.api('/auth/setup-draft','PUT',{revision:form.dataset.draftRevision||null,draft});form.dataset.draftRevision=result.revision;
    if(pending?.owner===Account.user?.id){pending.draft=draft;pending.revision=result.revision;}
-   if(button.hasAttribute('data-finish-later')){Account.navigate('/distributor/dashboard');return;}
-   feedback.textContent='Draft saved. You can reopen Company setup from your welcome screen.';feedback.focus();
+   if(button.hasAttribute('data-finish-later')){rememberLater();Account.navigate('/distributor/dashboard');return;}
+   feedback.textContent='Draft saved. You can reopen Company setup from your workspace menu.';feedback.focus();
   }catch(error){feedback.textContent=error.message;feedback.focus();}
   finally{button.disabled=false;}
  });
- return {business,setup,decorate};
+ document.addEventListener('cancel',event=>{if(!event.target.matches?.('.scs-dialog'))return;event.preventDefault();event.target.querySelector('[data-save-setup-draft]')?.click();},true);
+ return {business,setup,setupDismissed};
 })();

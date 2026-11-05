@@ -1,5 +1,21 @@
 -- New company subscriptions start directly; historic trials and agreements remain unchanged.
-ALTER TABLE os_billing_contracts DROP CONSTRAINT os_billing_contracts_trial_end_check;
+-- The inline CHECK in migration 042 receives a generated Postgres constraint name.
+-- Find the 168-hour trial-date check by its definition so deployments created by
+-- different PostgreSQL versions or restored schemas do not depend on that name.
+DO $$
+DECLARE trial_check record;
+BEGIN
+ FOR trial_check IN
+  SELECT conname
+    FROM pg_constraint
+   WHERE conrelid='os_billing_contracts'::regclass
+     AND contype='c'
+     AND pg_get_constraintdef(oid) ILIKE '%trial_end%'
+     AND pg_get_constraintdef(oid) ILIKE '%168%'
+ LOOP
+  EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', 'os_billing_contracts'::regclass, trial_check.conname);
+ END LOOP;
+END $$;
 ALTER TABLE os_billing_contracts ALTER COLUMN trial_start DROP NOT NULL;
 ALTER TABLE os_billing_contracts ALTER COLUMN trial_end DROP NOT NULL;
 ALTER TABLE os_billing_contracts ADD CONSTRAINT os_billing_contracts_trial_dates_check

@@ -1,7 +1,7 @@
 import {commercialReady} from '../legal/catalogue.js';
 import {companyLegalAcceptance} from '../legal/routes.js';
 import {assertCommercialAcceptance} from '../legal/service.js';
-import {createPaymentSession,applyVerifiedProviderEvent} from './payments.js';
+import {createPaymentSession} from './payments.js';
 import {freeTrialConfiguration} from './free-trial.js';
 import {policy} from './policy.js';
 import {Router,raw} from 'express';
@@ -12,8 +12,9 @@ import {withPlatform} from '../platform/routes.js';
 import {pool,transaction,audit} from '../db/pool.js';
 import {setupData} from '../setup/service.js';
 import {osAccess} from './os-access.js';
-import {billingConfiguration,razorpayClient,verifyWebhook,providerId,renewalAmount} from './razorpay.js';
-import {prepareContract,publicContract,planMatches,approvedOsOffer,eventHash} from './os-billing.js';
+import {billingConfiguration,razorpayClient,providerId,renewalAmount} from './razorpay.js';
+import {prepareContract,publicContract,planMatches,approvedOsOffer} from './os-billing.js';
+import {acceptRazorpayWebhook,insertWebhookInbox} from './webhook-inbox.js';
 import {HttpError,badInput} from '../errors.js';
 import * as v from '../validation.js';
 import {limit} from '../auth/security.js';
@@ -58,6 +59,21 @@ osRoutes.post('/cancel',async(req,res)=>{
 });
 billingAdmin.use(requireUser);billingAdmin.use((req,res,next)=>['GET','HEAD'].includes(req.method)?next():csrf(req,res,next));
 billingAdmin.get('/',async(req,res)=>res.json(await withPlatform(req,'platform.commercial.read',async db=>({freeTrial:await freeTrialConfiguration(db),mode:billingConfiguration().mode,available:billingConfiguration().available,plans:(await db.query('SELECT p.code,p.status,v.id AS version_id,v.terms,m.provider_plan_id,m.mode,m.total_count FROM commercial_plans p JOIN commercial_plan_versions v ON v.id=p.current_version_id LEFT JOIN razorpay_plan_mappings m ON m.plan_version_id=v.id ORDER BY p.created_at DESC LIMIT 30')).rows,unresolved:(await db.query("SELECT id,company_id,state,mode,consent_at FROM os_billing_contracts WHERE state IN ('preparing','unknown','cancel_requested','review_required') ORDER BY consent_at LIMIT 50")).rows}))));
+ billingAdmin.get('/webhook-inbox',async(req,res)=>res.json(await withPlatform(req,'platform.commercial.read',async db=>({events:(await db.query(`SELECT id,provider_mode,provider_event_id,event_type,provider_subscription_id,contract_id,status,attempt_count,received_at,available_at,claimed_at,lease_expires_at,last_error_code,completed_at FROM razorpay_webhook_inbox ORDER BY received_at DESC,id DESC LIMIT 100`)).rows}))));
+ billingAdmin.post('/webhook-inbox/:id/retry',async(req,res)=>{
+  v.body(req.body,['reason']);const id=v.uuid(req.params.id),reason=v.text(req.body.reason,'reprocessing reason',500,10);
+  const result=await withPlatform(req,'platform.commercial.subscriptions',async(db,ctx)=>{
+   const row=(await db.query(`SELECT i.status,i.provider_event_id,i.event_type,i.provider_mode,i.attempt_count,
+    EXISTS(SELECT 1 FROM os_billing_events e WHERE e.provider_event_id=i.provider_event_id OR e.payload_hash=i.payload_hash) AS processing_recorded
+    FROM razorpay_webhook_inbox i WHERE i.id=$1 FOR UPDATE OF i`,[id])).rows[0];
+   if(!row)throw new HttpError(404,'NOT_FOUND','Webhook event not found.');
+   if(!['dead','review_required'].includes(row.status))throw new HttpError(409,'WEBHOOK_NOT_RETRYABLE','Only failed or review-required webhook events can be reprocessed.');
+   if(row.processing_recorded)throw new HttpError(409,'WEBHOOK_RECONCILIATION_REQUIRED','This event is already in the billing event journal. Reconcile its recorded payment or entitlement before reprocessing it.');
+   await db.query(`UPDATE razorpay_webhook_inbox SET status='retry',attempt_count=0,available_at=now(),claim_token=NULL,claimed_at=NULL,lease_expires_at=NULL,last_error_code=NULL,completed_at=NULL WHERE id=$1`,[id]);
+   await audit(db,{actor:ctx.userId,action:'commercial.webhook_reprocess_authorised',target:id,metadata:{providerEventId:row.provider_event_id,eventType:row.event_type,mode:row.provider_mode,previousStatus:row.status,reason}});
+   return {message:'Webhook event queued for a fresh verified processing attempt.'};
+  });res.json(result);
+ });
 billingAdmin.post('/trial-config',async(req,res)=>{
  v.body(req.body,['planVersionId','enabled','revision','reason']);const version=v.uuid(req.body.planVersionId),reason=v.text(req.body.reason,'review reason',500,10);if(typeof req.body.enabled!=='boolean'||!Number.isSafeInteger(req.body.revision)||req.body.revision<0)throw badInput('Review the trial configuration and refresh before saving.');
  if(req.body.enabled)throw new HttpError(410,'FREE_TRIALS_DISABLED','New Solar OS free trials are disabled. Existing recorded agreements are unchanged.');
@@ -76,11 +92,8 @@ billingAdmin.post('/mapping',async(req,res)=>{
  await withPlatform(req,'platform.commercial.plans',async(db,ctx)=>{await db.query('INSERT INTO razorpay_plan_mappings(plan_version_id,provider_plan_id,mode,total_count,created_by) VALUES($1,$2,$3,$4,$5)',[version,providerPlan,provider.settings.mode,count,ctx.userId]);await audit(db,{actor:ctx.userId,action:'commercial.razorpay_plan_mapped',target:version,metadata:{providerPlan,mode:provider.settings.mode,totalCount:count,reason}});});res.status(201).json({message:'Provider mapping verified and saved. No subscription or charge was created.'});
 });
 billingWebhook.post('/',raw({type:'application/json',limit:'256kb'}),async(req,res)=>{
- await limit(req,'razorpay-webhook',req.ip,600,60);const provider=razorpayClient(),settings=provider.settings;if(!settings.available)throw new HttpError(503,'BILLING_UNAVAILABLE','Billing webhook unavailable.');if(!verifyWebhook(req.body,req.get('X-Razorpay-Signature'),settings.webhook))throw new HttpError(400,'INVALID_WEBHOOK','Invalid webhook signature.');
- let event;try{event=JSON.parse(req.body.toString('utf8'));}catch{throw badInput('Invalid webhook.');}if(!['subscription.authenticated','subscription.activated','subscription.charged','subscription.cancelled','subscription.completed','subscription.halted','subscription.pending'].includes(event.event))return res.json({ignored:true});
- const id=providerId(event.payload?.subscription?.entity?.id,'sub'),eventId=v.text(req.get('X-Razorpay-Event-Id'),'event reference',200),hash=eventHash(req.body);
- const c=(await pool.query('SELECT * FROM os_billing_contracts WHERE provider_subscription_id=$1',[id])).rows[0];if(!c)throw new HttpError(409,'BILLING_CONTEXT_PENDING','Subscription is not yet associated with a confirmed application request. Retry later.');if(c.mode!==settings.mode)throw new HttpError(409,'BILLING_MODE_MISMATCH','Billing mode mismatch.');
- if((await pool.query('SELECT 1 FROM os_billing_events WHERE payload_hash=$1 OR provider_event_id=$2',[hash,eventId])).rowCount)return res.json({duplicate:true});
- const sub=await provider.request('GET','subscriptions/'+id);let payment,invoice;if(event.event==='subscription.charged'){payment=await provider.request('GET','payments/'+providerId(event.payload?.payment?.entity?.id,'pay'));invoice=await provider.request('GET','invoices/'+providerId(payment.invoice_id,'inv'));}
- const result=await transaction(async db=>{await db.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[c.owner_id]);const company=(await db.query('SELECT status,lifecycle FROM companies WHERE id=$1 FOR UPDATE',[c.company_id])).rows[0];const current=(await db.query('SELECT * FROM os_billing_contracts WHERE id=$1 FOR UPDATE',[c.id])).rows[0];if(company?.status!=='active'||company?.lifecycle!=='active'){await db.query("UPDATE os_billing_contracts SET state='review_required' WHERE id=$1",[c.id]);return {reviewRequired:true};}return applyVerifiedProviderEvent({db,contract:current,event:{...event,mode:settings.mode},providerSubscription:sub,payment,invoice,eventId,hash});});res.json(result);
+ await limit(req,'razorpay-webhook',req.ip,600,60);const settings=billingConfiguration();if(!settings.available)throw new HttpError(503,'BILLING_UNAVAILABLE','Billing webhook unavailable.');
+ const result=await acceptRazorpayWebhook({rawBody:req.body,signature:req.get('X-Razorpay-Signature'),secret:settings.webhook,eventId:req.get('X-Razorpay-Event-Id'),mode:settings.mode,requestId:req.requestId,persist:row=>transaction(db=>insertWebhookInbox(db,row))});if(result.ignored)return res.json({ignored:true});
+ console.info(JSON.stringify({event:result.duplicate?'razorpay_webhook_duplicate':'razorpay_webhook_persisted',requestId:req.requestId,inboxId:result.id,eventId:result.eventId,eventType:result.eventType,mode:result.mode,duplicate:Boolean(result.duplicate)}));
+ res.status(200).json({accepted:true,duplicate:Boolean(result.duplicate)});
 });

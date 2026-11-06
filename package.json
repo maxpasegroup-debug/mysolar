@@ -22,6 +22,8 @@
     "admin:revoke": "node --env-file-if-exists=.env server/admin.js revoke",
     "worker:reminders": "node --env-file-if-exists=.env server/automation/worker.js",
     "worker:reminders:once": "node --env-file-if-exists=.env server/automation/worker.js --once",
+    "worker:razorpay-webhooks": "node --env-file-if-exists=.env server/commercial/razorpay-webhook-worker.js",
+    "worker:razorpay-webhooks:once": "node --env-file-if-exists=.env server/commercial/razorpay-webhook-worker.js --once",
     "worker:mail": "node --env-file-if-exists=.env server/mail-worker.js",
     "worker:mail:once": "node --env-file-if-exists=.env server/mail-worker.js --once",
     "worker:monitor": "node --env-file-if-exists=.env server/monitor-worker.js",

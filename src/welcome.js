@@ -59,5 +59,5 @@ window.SiaWelcome=(()=>{
   finally{button.disabled=false;}
  });
  document.addEventListener('cancel',event=>{if(!event.target.matches?.('.scs-dialog'))return;event.preventDefault();event.target.querySelector('[data-save-setup-draft]')?.click();},true);
- return {business,setup,setupDismissed};
+ return {business,setup,setupDismissed,decorate};
 })();

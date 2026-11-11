@@ -52,8 +52,10 @@ const Landing = (() => {
             <p class="lp-hero-sub">Powering every possibility. <em>Together.</em></p>
           </div>
           <div class="lp-cloud-bed" aria-hidden="true">${[[-18,0,80],[16,-4,88],[46,2,76],[-12,18,60],[30,20,72],[58,14,58]].map(([left, bottom, width]) => `<img class="lp-bed-cloud" src="/assets/hero-cloud-b.png" alt="" style="left:${left}%;bottom:${bottom}%;--lp-cloud-w:${width}%">`).join('')}</div>
-          <img class="lp-hero-island" src="/assets/hero-island.png" width="1024" height="682" alt="" fetchpriority="high" decoding="async">
-          <img class="lp-panel-piece" src="/assets/hero-panel-piece.png" width="700" height="336" alt="">
+          <div class="lp-hero-equipment" aria-hidden="true">
+            <img class="lp-hero-island" src="/assets/hero-island.png" width="1024" height="682" alt="" fetchpriority="high" decoding="async">
+            <img class="lp-panel-piece" src="/assets/hero-panel-piece.png" width="700" height="336" alt="" decoding="async">
+          </div>
           <div class="lp-cloud-veil" aria-hidden="true">${[[-24,12,-1,52,'a'],[-18,34,-1,48,'b'],[-12,46,-1,44,'a'],[68,6,1,46,'a'],[66,26,1,46,'b'],[64,40,1,46,'a'],[-8,66,-1,38,'a'],[66,56,1,44,'a'],[-8,-6,-1,36,'a'],[70,-8,1,40,'a']].map(([left, top, dir, width, kind], index) => `<img class="lp-cloud" src="/assets/hero-cloud-${kind}.png" alt="" style="left:${left}%;top:${top}%;--lp-cloud-w:${width}%" data-dir="${dir}" data-flip="${index % 2 ? -1 : 1}">`).join('')}</div>
         </div>
       </section>
@@ -163,6 +165,7 @@ const Landing = (() => {
     }
     const piece = page.querySelector('.lp-panel-piece');
     const island = page.querySelector('.lp-hero-island');
+    const equipment = page.querySelector('.lp-hero-equipment');
     const veil = page.querySelector('.lp-cloud-veil');
     const clouds = [...page.querySelectorAll('.lp-cloud')];
     const pin = page.querySelector('.lp-hero-pin');
@@ -258,13 +261,13 @@ const Landing = (() => {
         piece.style.left = `${box.x}px`;
         piece.style.top = `${box.y}px`;
       } else {
-        if (pin && piece.parentElement !== pin) pin.appendChild(piece);
+        if (equipment && piece.parentElement !== equipment) equipment.appendChild(piece);
         flyingPiece = null;
-        const pinRect = pin.getBoundingClientRect();
+        const equipmentRect = equipment.getBoundingClientRect();
         piece.style.position = 'absolute';
         piece.style.zIndex = '5';
-        piece.style.left = `${box.x - pinRect.left}px`;
-        piece.style.top = `${box.y - pinRect.top}px`;
+        piece.style.left = `${box.x - equipmentRect.left}px`;
+        piece.style.top = `${box.y - equipmentRect.top}px`;
       }
       const islandOff = ir.bottom < 80 || ir.top > window.innerHeight;
       piece.style.visibility = !flying && islandOff ? 'hidden' : 'visible';
@@ -272,9 +275,12 @@ const Landing = (() => {
     };
     window.addEventListener('scroll', schedulePiece, { signal, passive: true });
     window.addEventListener('resize', schedulePiece, { signal });
+    // Image/font loading can change the hero geometry after the first frame.
+    [island, piece, ...clouds].filter(Boolean).forEach(image => image.addEventListener('load', schedulePiece, { signal }));
+    document.fonts?.ready.then(() => { if (!signal.aborted) schedulePiece(); });
     schedulePiece();
     const panel = page.querySelector('.lp-hero-panel');
-    const stopMotion = () => { if (motion.matches) { observer?.disconnect(); (page.getAnimations?.({ subtree: true }) || []).forEach(animation => animation.cancel()); if (panel) panel.style.transform = ''; } };
+    const stopMotion = () => { if (motion.matches) { observer?.disconnect(); (page.getAnimations?.({ subtree: true }) || []).forEach(animation => animation.cancel()); if (panel) panel.style.transform = ''; } schedulePiece(); };
     motion.addEventListener('change', stopMotion, { signal });
     const section = new URLSearchParams(location.hash.split('?')[1] || '').get('section');
     if (section && /^[a-z]+$/.test(section)) requestAnimationFrame(() => scrollToSection(section));

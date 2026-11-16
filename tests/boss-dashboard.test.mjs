@@ -55,7 +55,7 @@ test('owner view preserves role boundary and uses real values with honest unavai
  const html=boss.page({cards:[],priorities:[],outstanding:null,boss:{sales:null,activeQuotations:0,team:{activeEmployees:0,overdueTasks:null}}});
  assert.match(html,/Unavailable/);assert.match(html,/Attendance and leave tracking are not available/);assert.match(html,/Coming soon/);assert.match(html,/Not connected/);assert.doesNotMatch(html,/href="#\/distributor\/new\?kind=invoices"/);assert.doesNotMatch(html,/href="#\/distributor\/accounts"/);
  assert.match(html,/href="#\/distributor\/quotation\/new"/);assert.doesNotMatch(html,/4,86,000|1,24,500/);
- assert.match(html,/href="#\/distributor\/sales-booster"/);assert.match(html,/Online lead automation · Coming soon/);
+ assert.match(html,/href="#\/distributor\/sales-booster"/);assert.match(html,/Connect your online channels with our team\./);assert.match(html,/Free setup/);assert.doesNotMatch(html,/channels are connected|automatically generates leads/i);
  account.activeCompany.role='sales';assert.equal(boss.enabled(),false);account.activeCompany.role='owner';account.activeCompany.lifecycle='draft';assert.equal(boss.enabled(),true);
 });
 test('Sales Booster discovery stays role-gated and makes no integration claim',()=>{

@@ -8,7 +8,7 @@ const {documents,reviewed,publicCatalogue,commercialReady}=await import('../serv
 const {grievanceDeadlines}=await import('../server/legal/routes.js');
 
 test('legal proposals retain approved commercial amounts without inventing tax or annual rates',()=>{
- const content=JSON.stringify(documents);for(const amount of ['3,500','6,999','9,999','35,000'])assert.ok(content.includes(amount));assert.match(content,/web only/);assert.match(content,/No payment mandate is required/);assert.match(content,/Annual prices.*not approved/);
+ const content=JSON.stringify(documents);for(const amount of ['3,500','6,999','9,999','35,000'])assert.ok(content.includes(amount));assert.match(content,/web only/);assert.match(content,/New Solar OS accounts do not receive a free trial/);assert.match(content,/Paid access requires approved terms and explicit supported subscription\/mandate authorisation/);assert.match(content,/Setup alone does not authorise a charge/);assert.match(content,/historic no-mandate trial creates no payment to refund/);assert.match(content,/Annual prices.*not approved/);
  assert.equal(commercialReady(),false);assert.ok(publicCatalogue().documents.every(d=>d.status==='draft'));assert.equal(documents.length,6);assert.equal(new Set(documents.map(d=>d.digest)).size,6);
 });
 test('approval is bound to exact content, reviewer evidence and grievance appointment',()=>{

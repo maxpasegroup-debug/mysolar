@@ -62,7 +62,7 @@ auth.post('/login',csrf,async(req,res)=>{
   await limit(req,'login-ip',req.ip,20);
   const input=v.body(req.body,['email','password','code','accountType','purpose'],['email','password']);
   const administrator=input.purpose===undefined?false:v.choice(input.purpose,['platform'],'login purpose')==='platform';
-  const email=v.email(input.email), password=v.password(input.password);
+  const email=v.email(input.email), password=administrator?v.loginPassword(input.password):v.password(input.password);
   await limit(req,'login-account',email,10);
   const type=input.accountType===undefined?null:accountType(input.accountType);const result=await pool.query('SELECT id,password_hash,status FROM users WHERE email=$1 AND ($2::text IS NULL OR account_type=$2)',[email,type]);
   const record=result.rowCount===1?result.rows[0]:null;

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {randomBytes} from 'node:crypto';
 import { unitEnvironment } from './helpers/env.mjs';
 unitEnvironment();
 const security=await import('../server/auth/security.js'),sessions=await import('../server/auth/sessions.js'),v=await import('../server/validation.js');
@@ -9,3 +10,10 @@ test('auth: CSRF rejects missing/mismatched token; anonymous access cannot becom
 test('auth: cross-origin and non-JSON mutations are rejected',()=>{const req={method:'POST',get:key=>key==='origin'?'https://attacker.invalid':'same-origin',is:()=>true};assert.throws(()=>security.sameOrigin(req,{},()=>{}),{code:'ORIGIN_REJECTED'});req.get=key=>key==='origin'?'http://localhost:3000':'same-origin';req.is=()=>false;assert.throws(()=>security.sameOrigin(req,{},()=>{}),{code:'JSON_REQUIRED'});});
 test('validation: public account payload cannot carry role/company privileges',()=>{assert.throws(()=>v.body({name:'User',email:'x@test.invalid',password:'long enough secret',role:'platform_admin'},['name','email','password']));assert.throws(()=>v.body({companyId:'x',permissions:['*']},[]));});
 test('validation: weak passwords and malformed record identifiers are rejected',()=>{assert.throws(()=>v.password('short'));assert.throws(()=>v.uuid("x' OR true --"));assert.throws(()=>v.email('not-an-email'));});
+test('validation: existing login credentials retain bounds without changing new-password policy',()=>{
+ const existing=randomBytes(5).toString('hex');assert.equal(existing.length,10);
+ assert.equal(v.loginPassword(existing),existing);assert.throws(()=>v.password(existing),{code:'VALIDATION_ERROR'});
+ assert.equal(v.password(randomBytes(6).toString('hex')).length,12);
+ for(const value of ['',null,undefined,[],{},123,'x'.repeat(129)])assert.throws(()=>v.loginPassword(value),{code:'VALIDATION_ERROR'});
+ assert.equal(v.loginPassword('x'.repeat(128)).length,128);assert.equal(v.loginPassword('  existing  '),'  existing  ');
+});

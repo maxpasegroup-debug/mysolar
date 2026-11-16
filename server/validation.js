@@ -16,6 +16,12 @@ export function password(value) {
   if (typeof value !== 'string' || value.length < 12 || value.length > 128 || Buffer.byteLength(value) > 512) throw badInput('Use a password between 12 and 128 characters.');
   return value;
 }
+// Authentication must verify an existing credential, not apply a new-password
+// policy. Keep size/type bounds; creation, reset and change still use password().
+export function loginPassword(value) {
+  if (typeof value !== 'string' || value.length < 1 || value.length > 128 || Buffer.byteLength(value) > 512) throw badInput('Enter your password (up to 128 characters).');
+  return value;
+}
 export function uuid(value) {
   if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) throw badInput('Invalid record reference.');
   return value;

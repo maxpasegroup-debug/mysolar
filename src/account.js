@@ -163,7 +163,7 @@ window.Account = (() => {
       }
       const preActivationPaths=new Set(['/distributor/dashboard','/distributor/setup','/distributor/team','/distributor/settings','/distributor/subscription','/distributor/activate','/distributor/public-profile','/distributor/branding','/distributor/service-areas','/distributor/white-label']);
       const access=state.activeCompany.osAccess||{},readOnlyExisting=access.hadAccess&&new URLSearchParams(location.hash.split('?')[1]||'').get('access')==='read-only';
-      const subscriptionFree=new Set(['/distributor/dashboard','/distributor/marketplace-leads','/distributor/activate','/distributor/subscription','/distributor/setup','/distributor/branding','/distributor/public-profile','/distributor/service-areas','/distributor/settings','/distributor/white-label','/distributor/team']);
+      const subscriptionFree=new Set(['/distributor/leads','/distributor/enquiry','/distributor/notifications','/distributor/dashboard','/distributor/marketplace-leads','/distributor/activate','/distributor/subscription','/distributor/setup','/distributor/branding','/distributor/public-profile','/distributor/service-areas','/distributor/settings','/distributor/white-label','/distributor/team']);
       if(p!=='/distributor/sales-booster'&&((state.activeCompany.lifecycle!=='active'&&!preActivationPaths.has(p))||(access.managed&&!access.unlocked&&!subscriptionFree.has(p)&&!readOnlyExisting)))return businessModulePreview(p);
     }
     if(!p.startsWith('/customer/')&&!state.activeCompany)return companyPicker();

@@ -17,7 +17,9 @@ export async function receivedEnquiry(db,ctx,id,lock=false){active(ctx);const ro
 export async function matching(db,data,page=1,companyId=null){
  let product=null;if(data.productId){product=await publishedProduct(db,data.productId);if(data.categoryId&&![product.category_id,product.subcategory_id].includes(data.categoryId))throw badInput('The selected product is outside this category.');}
  if(data.categoryId&&!(await db.query('SELECT id FROM catalogue_categories WHERE id=$1 AND active',[data.categoryId])).rowCount)throw badInput('Choose an active category.');
- const b=new Bindings(),where=[areaMatch(b,data.location),"commercial_public_allowed(v.id,'crm')"];if(companyId)where.push(`v.id=${b.add(companyId)}`);
+ // marketplace_vendors already enforces public-listing eligibility. Receiving a
+ // customer request must not require paid CRM access; staff writes stay gated.
+ const b=new Bindings(),where=[areaMatch(b,data.location)];if(companyId)where.push(`v.id=${b.add(companyId)}`);
  if(data.service)where.push(`${b.add(data.service)}=ANY(v.services)`);
  if(data.productId||data.categoryId||data.offerId){const terms=['o.company_id=v.id',areaMatch(b,data.location,'v.id','o.coverage_labels')];if(data.productId)terms.push(`o.product_id=${b.add(data.productId)}`);if(data.categoryId){const c=b.add(data.categoryId);terms.push(`(p.category_id=${c} OR p.subcategory_id=${c})`);}if(data.offerId)terms.push(`o.id=${b.add(data.offerId)}`);where.push(`EXISTS(SELECT 1 FROM marketplace_offers o JOIN marketplace_products p ON p.id=o.product_id WHERE ${terms.join(' AND ')})`);}
  return {...await paged(db,'v.id,v.name,v.city,v.services,v.service_areas','FROM marketplace_vendors v',where.join(' AND '),b,page,'v.name,v.id'),product};
@@ -31,7 +33,7 @@ export async function eligibleRecipients(db,data){
   if(categories.length)await db.query('SELECT id FROM catalogue_categories WHERE id=ANY($1::uuid[]) ORDER BY parent_id NULLS FIRST,id FOR SHARE',[categories]);
  }
  // Reuse exactly the preview predicate, bounded to selected IDs rather than silently matching new vendors.
- const b=new Bindings(),where=[`v.id=ANY(${b.add(data.companyIds)}::uuid[])`,areaMatch(b,data.location),"commercial_public_allowed(v.id,'crm')"];
+ const b=new Bindings(),where=[`v.id=ANY(${b.add(data.companyIds)}::uuid[])`,areaMatch(b,data.location)];
  if(data.service)where.push(`${b.add(data.service)}=ANY(v.services)`);
  if(data.productId)await publishedProduct(db,data.productId);
  if(data.categoryId&&!(await db.query('SELECT id FROM catalogue_categories WHERE id=$1 AND active',[data.categoryId])).rowCount)throw badInput('This category is unavailable.');

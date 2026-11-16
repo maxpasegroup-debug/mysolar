@@ -6,6 +6,21 @@
 .auth-login{width:min(100%,460px);margin:clamp(28px,7vh,80px) auto;padding:0 12px}.auth-login>.settings-panel{padding:32px;border-radius:16px}.auth-login h1{font-size:28px;margin:0 0 26px}.auth-login .account-form>.btn{width:100%}.auth-login .account-links{justify-content:flex-start}.auth-login label[hidden]{display:none!important}.auth-login [data-login-verification]>.btn{margin-top:12px}@media(max-width:480px){.auth-login>.settings-panel{padding:25px 20px}.auth-login{margin:28px auto}}
 .auth-mode-switch,[data-pin-restart]{border:0;background:transparent;font:inherit;cursor:pointer;padding:10px 0;text-align:left;white-space:normal;min-height:44px}.pin-form{display:grid;gap:14px}.pin-form>.btn{min-height:48px}.pin-form p{margin:0}.auth-login input[name=pin],input[name=otp]{letter-spacing:.22em;font-variant-numeric:tabular-nums}.auth-login .account-links{align-items:center}.auth-login .account-links a{display:inline-flex;align-items:center;min-height:44px}.auth-mode-switch:focus-visible,[data-pin-restart]:focus-visible{outline:2px solid var(--brand);outline-offset:4px}
 
+/* Dedicated administrator entrance, using the shared account form and brand. */
+.admin-login{width:min(100%,520px);margin:clamp(28px,7vh,80px) auto;padding:0 12px}
+.admin-login>.settings-panel{padding:32px;border-radius:16px;border-top:4px solid var(--brand)}
+.admin-login .eyebrow{font-size:10px;letter-spacing:1.6px;color:var(--brand);margin:0 0 16px}
+.admin-login h1{font-size:clamp(23px,5vw,28px);line-height:1.25;margin-bottom:12px;overflow-wrap:anywhere}
+.admin-login-intro{font-size:13px;line-height:1.7;color:var(--muted);margin:0 0 26px}
+.admin-login .account-feedback{overflow-wrap:anywhere}
+.admin-login .account-form>.btn{width:100%}
+.admin-login .account-links{justify-content:flex-start;align-items:center;font-size:12px}
+.admin-login .account-links a{display:inline-flex;align-items:center;min-height:44px}
+.admin-login label[hidden]{display:none!important}
+.admin-login [data-login-verification]>.btn{margin-top:12px}
+.admin-login :is(a,button,input):focus-visible{outline:2px solid var(--brand);outline-offset:3px}
+@media(max-width:480px){.admin-login>.settings-panel{padding:25px 20px}.admin-login .account-links{gap:8px 18px}}
+
 /* Route-backed sign-in dialog: the existing account form remains authoritative. */
 .auth-modal-open{overflow:hidden}
 .auth-signin-dialog{width:min(490px,calc(100% - 32px));max-height:calc(100dvh - 32px);padding:0;border:1px solid #e5ddcf;border-top:4px solid #681c2c;border-radius:22px;background:linear-gradient(145deg,#fcf7eb,#fffefa 45%);color:#30282b;box-shadow:0 30px 100px #29101d55;overflow:auto;overscroll-behavior:contain}

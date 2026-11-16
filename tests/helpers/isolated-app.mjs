@@ -6,7 +6,7 @@ import pg from 'pg';
 import {applyMigrations} from '../../server/db/migrations.js';
 import {unitEnvironment} from './env.mjs';
 
-export async function isolatedApp(t,{existingCompanyPolicy=false}={}) {
+export async function isolatedApp(t,{existingCompanyPolicy=false,port=0}={}) {
  const url=new URL(process.env.TEST_DATABASE_URL);
  assert.ok(['postgres:','postgresql:'].includes(url.protocol));assert.ok(['127.0.0.1','localhost','::1'].includes(url.hostname.replace(/[\[\]]/g,'')));assert.match(decodeURIComponent(url.pathname),/^\/mysolar_test_[a-z0-9_]+$/);
  const db=new pg.Client({connectionString:url.href,connectionTimeoutMillis:3000});await db.connect();
@@ -16,7 +16,7 @@ export async function isolatedApp(t,{existingCompanyPolicy=false}={}) {
  await db.query('CREATE SCHEMA "'+schema+'"');await db.query('SET search_path TO "'+schema+'",public');
  const original=(await db.query('SELECT version() AS version')).rows[0].version;
  const appUrl=new URL(url);appUrl.searchParams.set('options','-c search_path='+schema+',public');unitEnvironment();process.env.DATABASE_URL=appUrl.href;process.env.INVITATION_DELIVERY='email';
- const start=async()=>{const {app}=await import('../../server/index.js');pool=(await import('../../server/db/pool.js')).pool;server=app.listen(0,'127.0.0.1');await once(server,'listening');return 'http://127.0.0.1:'+server.address().port;};
+ const start=async()=>{const {app}=await import('../../server/index.js');pool=(await import('../../server/db/pool.js')).pool;server=app.listen(port,'127.0.0.1');await once(server,'listening');return 'http://127.0.0.1:'+server.address().port;};
  let base;
  const client=()=>({cookie:'',csrf:'',user:null,company:null,async request(path,method='GET',body,extra={}){
   const response=await fetch(base+'/api'+path,{method,headers:{Cookie:this.cookie,...(this.user&&path!=='/auth/session'?{'X-Account-ID':this.user.id}:{}),...(path.startsWith('/companies/current')?{'X-Company-ID':this.company?.id||''}:{}),...(['GET','HEAD'].includes(method)?{}:{Origin:'http://localhost:3000','Content-Type':'application/json','X-CSRF-Token':this.csrf}),...extra},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(20000)});

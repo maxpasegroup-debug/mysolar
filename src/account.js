@@ -2,7 +2,7 @@
 window.Account = (() => {
   let state={loading:true,error:'',user:null,companies:[],activeCompany:null,permissions:[],customerPermissions:[],csrfToken:''};
   let resources=new Map();let generation=0;let pending=null;let flash='';let resetToken='';let submitting=false;let passwordChallenge=null;let recoveryPurpose='customer';
-  const authPaths=['/account/reminders','/account-security','/customer/login','/distributor/login','/register','/recover','/reset-password','/distributor/onboarding','/companies','/invitation'];
+  const authPaths=['/admin/login','/admin/recover','/account/reminders','/account-security','/customer/login','/distributor/login','/register','/recover','/reset-password','/distributor/onboarding','/companies','/invitation'];
   const path=()=> (location.hash.slice(1)||'/').split('?')[0];
   const isDemo=()=>new URLSearchParams(location.hash.split('?')[1]||'').get('demo')==='1';
   const isPrivate=p=>p==='/sia'||p.startsWith('/platform')||(p.startsWith('/customer/')&&!authPaths.includes(p))||(p.startsWith('/distributor/')&&!authPaths.includes(p));
@@ -90,6 +90,12 @@ window.Account = (() => {
     if(window.MobileAuth&&!MobileAuth.emailMode())return MobileAuth.login();
     return '<div class="auth-login"><section class="panel settings-panel" aria-labelledby="signin-title"><h1 id="signin-title">Sign in</h1>'+form('account-login',field('Email address','email','email','','required autocomplete="username" maxlength="254"')+field('Password','password','password','','required autocomplete="current-password" minlength="12" maxlength="128"')+'<label>Account type<select name="accountType"><option value="customer" '+(!distributor?'selected':'')+'>Customer</option><option value="business" '+(distributor?'selected':'')+'>Business</option></select></label>','Sign in',state.error||flash)+'<div class="account-links">'+link(Journey.authPath('/recover'),'Forgot password?','text-link')+(window.MobileAuth?MobileAuth.switchButton():'')+'</div></section></div>';
   }
+  function adminLoginPage(recovery=false){
+    const authorised=(state.platformPermissions||[]).includes('platform.companies.read');
+    if(state.user&&authorised&&!recovery){queueMicrotask(()=>navigate('/platform'));return loading();}
+    const content=state.user&&!recovery?'<p class="account-feedback" role="alert">This account cannot access platform administration. Sign out to use an authorised administrator account.</p><button class="btn primary" data-account-action="logout">Sign out</button>':recovery?form('account-admin-recover',field('Email address','email','email','','required autocomplete="email" maxlength="254"'),'Request recovery',flash)+link('/admin/login','Back to Administrator Login','text-link'):form('account-login','<input type="hidden" name="purpose" value="platform">'+field('Email address','email','email','','required autocomplete="username" maxlength="254"')+field('Password','password','password','','required autocomplete="current-password" minlength="12" maxlength="128"'),'Sign in',state.error||flash)+'<div class="account-links">'+link('/admin/recover','Forgot password?','text-link')+'</div>';
+    return '<div class="admin-login"><section class="panel settings-panel" aria-labelledby="admin-signin-title"><p class="eyebrow">PLATFORM ADMINISTRATION</p><h1 id="admin-signin-title">'+(recovery?'Administrator password recovery':'MY SOLAR — Administrator Login')+'</h1><p class="admin-login-intro">'+(recovery?'Use the email address of your existing administrator account. Recovery does not grant administrator access.':'Secure access for authorised MY SOLAR platform administrators.')+'</p>'+content+'</section></div>';
+  }
   function requestLoginCode(f){
     if(!f.elements.code){const group=document.createElement('div');group.dataset.loginVerification='';group.innerHTML=field('Authenticator or recovery code','code','text','','required autocomplete="one-time-code" maxlength="32"')+'<button class="btn secondary" type="button" data-login-back>Back to sign in</button>';f.querySelector('#account-feedback').before(group);}
     f.querySelectorAll('label').forEach(label=>{if(label.querySelector('[name=email],[name=password],[name=mobile],[name=pin]'))label.hidden=true;});f.querySelector('button[type=submit]').firstChild.textContent='Verify and sign in';f.elements.code.focus();
@@ -142,6 +148,7 @@ window.Account = (() => {
     if(p==='/storefront')return Organization.page(p);
     if(!authPaths.includes(p)&&(!isPrivate(p)||isDemo()))return null;
     if(state.loading)return loading();
+    if(p==='/admin/login'||p==='/admin/recover')return adminLoginPage(p==='/admin/recover');
     if(p==='/account/reminders')return state.user?Automation.page(p):loginPage(false);
     if(p==='/account-security')return state.user?AccountSecurity.page():loginPage(false);
     if(p==='/invitation')return Organization.page(p);
@@ -149,7 +156,7 @@ window.Account = (() => {
     if(p==='/register')return registerPage();if(p==='/recover')return recoveryPage();if(p==='/reset-password')return recoveryPage(true);
     if(state.user&&state.user.accountType&&((p.startsWith('/customer/')&&!authPaths.includes(p)&&businessAccount())||((p.startsWith('/distributor/')&&!['/distributor/login'].includes(p)||p==='/companies')&&!businessAccount())))return accountBoundary();
     if(p==='/distributor/onboarding')return state.error?problem(state.error):onboarding();if(p==='/companies')return state.error?problem(state.error):companyPicker();
-    if(state.error)return problem(state.error);if(!state.user)return loginPage(!p.startsWith('/customer/'));
+    if(state.error)return problem(state.error);if(!state.user)return p.startsWith('/platform')?adminLoginPage():loginPage(!p.startsWith('/customer/'));
     if(['/platform/locations','/platform/mail','/platform/operations','/platform/white-label-requests','/platform/costs'].includes(p))return ReleaseTools.page(p);
     if(p==='/platform/razorpay')return (state.platformPermissions||[]).includes('platform.commercial.read')?BusinessAccess.page(p):problem('Platform commercial access required.');
     if(p.startsWith('/platform')){const commercialPage=Commercial.page(p);if(commercialPage!==null)return commercialPage;const marketplacePage=Marketplace.page(p);return marketplacePage===null?Organization.page(p):marketplacePage;}
@@ -220,10 +227,11 @@ window.Account = (() => {
     void run(async()=>{
       if(pending)await pending;
       if(!state.csrfToken)throw new Error(state.error||'Refresh your security session before continuing.');
-      if(f.id==='account-login'){if(!data.mobile&&!data.accountType)data.accountType=path().startsWith('/distributor')?'business':'customer';try{await api(data.mobile?'/auth/pin/login':'/auth/login','POST',data);}catch(error){if(error.code==='MFA_REQUIRED')requestLoginCode(f);throw error;}await refresh();if(!state.user)throw new Error(state.error||'Could not load your account. Please try again.');navigate(Organization.hasInvitation()?'/invitation':home());}
+      if(f.id==='account-login'){if(!data.purpose&&!data.mobile&&!data.accountType)data.accountType=path().startsWith('/distributor')?'business':'customer';try{await api(data.mobile?'/auth/pin/login':'/auth/login','POST',data);}catch(error){if(error.code==='MFA_REQUIRED')requestLoginCode(f);throw error;}await refresh();if(!state.user)throw new Error(state.error||'Could not load your account. Please try again.');navigate(data.purpose==='platform'?'/platform':Organization.hasInvitation()?'/invitation':home());}
       else if(f.id==='account-register'){const journey=new URLSearchParams(location.hash.split('?')[1]||'').get('journey');const result=await createPersonalAccount(data,journey==='distributor'?'distributor':'customer');if(result.pending)(result.emailSignup?MobileAuth.requestEmailConfirmation:MobileAuth.requestConfirmation)(f,result);else navigate(result.next);}
       else if(f.id==='account-password-code-request'){recoveryPurpose=data.accountType;const result=await api('/auth/password-reset/request','POST',data);passwordChallenge=result.challenge;flash=result.message;render();document.querySelector('[name=otp]')?.focus();}
       else if(f.id==='account-password-code-confirm'){if(data.password!==data.confirmPassword)throw new Error('The passwords do not match.');const result=await api('/auth/password-reset/confirm','POST',{challenge:passwordChallenge,otp:data.otp,password:data.password});passwordChallenge=null;f.reset();await refresh();flash=result.message;navigate(recoveryPurpose==='business'?'/distributor/login':'/customer/login');}
+      else if(f.id==='account-admin-recover'){const result=await api('/auth/recover','POST',data);flash=result.message;f.reset();render();}
       else if(f.id==='account-recover'){data.accountType=data.accountType||'customer';const result=await api('/auth/recover','POST',data);flash=result.message;render();}
       else if(f.id==='account-reset'){const result=await api('/auth/reset-password','POST',{...data,token:resetToken});resetToken='';await refresh();flash=result.message;navigate('/customer/login');}
       else if(f.id==='account-company-create'){const location=CompanyLocation.values(f),workspacePlan=SiaCompanySetup.values(f),publicListing=workspacePlan.publicListing;delete workspacePlan.publicListing;const payload={operationKey:data.operationKey,name:data.name,email:data.email,phone:workspacePlan.emergencyContact,...location,city:data.city?.trim()||location.district,businessPreset:Workspace.selectedPreset(f),businessType:Workspace.selectedBusinessType(f),workspacePlan,publicListing};await api('/companies','POST',payload);await refresh();navigate('/distributor/dashboard');}
@@ -246,7 +254,7 @@ window.Account = (() => {
     const target=event.target.closest('[data-account-action]');if(!target)return;
     void run(async()=>{switch(target.dataset.accountAction){
       case 'refresh':await refresh();break;
-      case 'logout':case 'logout-all':await api(target.dataset.accountAction==='logout'?'/auth/logout':'/auth/logout-all','POST',{});resources.clear();MobileAuth.useEmail();passwordChallenge=null;await refresh();flash='You have been signed out.';navigate('/customer/login');break;
+      case 'logout':case 'logout-all':{const administrator=path().startsWith('/admin/')||path().startsWith('/platform');await api(target.dataset.accountAction==='logout'?'/auth/logout':'/auth/logout-all','POST',{});resources.clear();MobileAuth.useEmail();passwordChallenge=null;await refresh();flash='You have been signed out.';navigate(administrator?'/admin/login':'/customer/login');break;}
       case 'select-company':await api('/companies/select','POST',{companyId:target.dataset.company});await refresh();navigate(Organization.hasInvitation()?'/invitation':'/distributor/dashboard');break;
     }});
   });

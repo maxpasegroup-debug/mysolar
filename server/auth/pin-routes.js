@@ -125,7 +125,7 @@ pinRoutes.post('/enrol/confirm',requireUser,async(req,res)=>{
  });if(!done)throw invalid();clearSessionCookie(res);res.json({message:'Mobile/PIN enabled. All sessions signed out. Sign in with your mobile number and PIN.'});
 });
 pinRoutes.post('/reset/request',async(req,res)=>{
- emailReady();const input=v.body(req.body,['mobile','countryCode']),mobile=mobileNumber(input.mobile,input.countryCode||'');
+ emailReady();const input=v.body(req.body,['mobile','countryCode'],['mobile']),mobile=mobileNumber(input.mobile,input.countryCode||'');
  await limit(req,'pin-reset-ip',req.ip,8,3600);await limit(req,'pin-reset-mobile',mobile,3,3600);await limit(req,'pin-reset-cooldown',mobile,1,60);
  const challenge=await transaction(async db=>{
   const owner=(await db.query('SELECT user_id FROM mobile_credentials WHERE mobile=$1',[mobile])).rows[0];if(!owner)return randomUUID();

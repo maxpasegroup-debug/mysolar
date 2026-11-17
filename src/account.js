@@ -87,6 +87,7 @@ window.Account = (() => {
   function accountFrame(title,description,content){return `<div class="auth-layout"><div><p class="eyebrow">MY SOLAR · YOUR ACCOUNT</p><h1>${title}</h1><p class="muted">${description}</p><div class="auth-art">${icon('sun')}</div></div><section class="panel settings-panel">${content}</section></div>`;}
   function loginPage(distributor=false) {
     if(state.user){const target=Organization.hasInvitation()?'/invitation':home();if(path()!==target)queueMicrotask(()=>navigate(target));return loading();}
+    if(!distributor)return MobileAuth.login({customer:true});
     if(window.MobileAuth&&!MobileAuth.emailMode())return MobileAuth.login();
     return '<div class="auth-login"><section class="panel settings-panel" aria-labelledby="signin-title"><h1 id="signin-title">Sign in</h1>'+form('account-login',field('Email address','email','email','','required autocomplete="username" maxlength="254"')+field('Password','password','password','','required autocomplete="current-password" minlength="12" maxlength="128"')+'<label>Account type<select name="accountType"><option value="customer" '+(!distributor?'selected':'')+'>Customer</option><option value="business" '+(distributor?'selected':'')+'>Business</option></select></label>','Sign in',state.error||flash)+'<div class="account-links">'+link(Journey.authPath('/recover'),'Forgot password?','text-link')+(window.MobileAuth?MobileAuth.switchButton():'')+'</div></section></div>';
   }
@@ -254,7 +255,7 @@ window.Account = (() => {
     const target=event.target.closest('[data-account-action]');if(!target)return;
     void run(async()=>{switch(target.dataset.accountAction){
       case 'refresh':await refresh();break;
-      case 'logout':case 'logout-all':{const administrator=path().startsWith('/admin/')||path().startsWith('/platform');await api(target.dataset.accountAction==='logout'?'/auth/logout':'/auth/logout-all','POST',{});resources.clear();MobileAuth.useEmail();passwordChallenge=null;await refresh();flash='You have been signed out.';navigate(administrator?'/admin/login':'/customer/login');break;}
+      case 'logout':case 'logout-all':{const administrator=path().startsWith('/admin/')||path().startsWith('/platform'),customer=!administrator&&!businessAccount();await api(target.dataset.accountAction==='logout'?'/auth/logout':'/auth/logout-all','POST',{});resources.clear();if(customer)MobileAuth.useMobile();else MobileAuth.useEmail();passwordChallenge=null;await refresh();flash='You have been signed out.';navigate(administrator?'/admin/login':'/customer/login');break;}
       case 'select-company':await api('/companies/select','POST',{companyId:target.dataset.company});await refresh();navigate(Organization.hasInvitation()?'/invitation':'/distributor/dashboard');break;
     }});
   });

@@ -17,7 +17,8 @@ window.MobileAuth=(()=>{
  document.addEventListener('change',event=>{if(event.target.matches('.auth-pin-control input'))paintPIN(event.target);});
  document.addEventListener('click',event=>{if(event.target.closest('[data-login-back]'))queueMicrotask(()=>document.querySelectorAll('.auth-pin-control input').forEach(paintPIN));});
  function cleanupLogin(){
-  signinFocus=signinDialog?.contains(document.activeElement)?document.activeElement.name:null;
+  const active=document.activeElement;
+  signinFocus=signinDialog?.contains(active)?{route:signinDialog.dataset.route,name:active.name,index:[...signinDialog.querySelectorAll('input,button,a,select,textarea')].indexOf(active)}:null;
   signinController?.abort();signinController=null;
   if(signinDialog?.open)signinDialog.close();
   signinDialog=null;document.body.classList.remove('auth-modal-open');
@@ -26,7 +27,7 @@ window.MobileAuth=(()=>{
   const login=document.querySelector('.auth-login:has(#account-login),.auth-login:has(.pin-form)');
   if(!login)return false;
   signinController=new AbortController();const {signal}=signinController;
-  const dialog=document.createElement('dialog');signinDialog=dialog;
+  const dialog=document.createElement('dialog');signinDialog=dialog;dialog.dataset.route=location.hash;
   const recovery=!login.querySelector('#account-login');
   dialog.id=recovery?'recovery-dialog':'signin-dialog';dialog.className='auth-signin-dialog';dialog.setAttribute('aria-labelledby','signin-title');dialog.setAttribute('aria-describedby','signin-intro');
   const background=document.createElement('div');background.className='auth-signin-background';background.innerHTML=Landing.page();
@@ -42,9 +43,18 @@ window.MobileAuth=(()=>{
   dialog.addEventListener('cancel',event=>{event.preventDefault();dismiss();},{signal});
   dialog.addEventListener('click',event=>{if(event.target.closest('[data-signin-close]'))dismiss();},{signal});
   document.body.classList.add('auth-modal-open','lp-active');document.getElementById('main')?.classList.add('lp-main');
+  const customerLogin=location.hash.split('?')[0]==='#/customer/login';
+  const saved=signinFocus?.route===location.hash?signinFocus:null;
+  const controls=[...dialog.querySelectorAll('input,button,a,select,textarea')];
+  const focus=(saved&&(controls.find(control=>saved.name&&control.name===saved.name)||controls[saved.index]))||(customerLogin?dialog.querySelector('[name=mobile]'):dialog.querySelector('input'));
+  if(focus)focus.autofocus=true;
   dialog.showModal();
-  const focus=[...dialog.querySelectorAll('input')].find(input=>input.name===signinFocus)||dialog.querySelector('input');
   focus?.focus({preventScroll:true});signinFocus=null;
+  if(customerLogin){
+   const country=dialog.querySelector('[name=countryCode]'),mobile=dialog.querySelector('[name=mobile]');
+   country?.addEventListener('change',()=>queueMicrotask(()=>{if(document.activeElement===country&&country.checkValidity())mobile?.focus({preventScroll:true});}),{signal});
+   country?.addEventListener('keydown',event=>{if(event.key==='Enter'&&country.checkValidity()){event.preventDefault();mobile?.focus({preventScroll:true});}},{signal});
+  }
   dialog.querySelectorAll('.auth-pin-control input').forEach(paintPIN);
   return true;
  }

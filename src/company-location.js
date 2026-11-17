@@ -1,4 +1,4 @@
-/* Shared by company creation and resumable setup; no customer dashboard changes. */
+/* Shared India location controls for company setup and customer enquiries. */
 window.CompanyLocation=(()=>{
  const other='__other__',e=value=>escapeHTML(value??'');
  const find=(items,value)=>items.find(item=>item.toLowerCase()===String(value||'').toLowerCase())||'';
@@ -16,7 +16,24 @@ window.CompanyLocation=(()=>{
   const district=form.elements.district.value===other?form.elements.districtOther.value.trim():form.elements.district.value;
   return {countryCode:form.elements.countryCode.value,state:form.elements.state.value,district};
  }
+ function searchable(label,name,items,current='',disabled=false){
+  return `<div data-location-choice="${name}"><label>Search ${label.toLowerCase()}<input type="search" data-location-search="${name}" aria-label="Search ${label.toLowerCase()}" autocomplete="off" autocapitalize="none" spellcheck="false" ${disabled?'disabled':''}></label><label>${label} *<select name="${name}" required autocomplete="off" ${disabled?'disabled':''}>${options(items,current,disabled?'Choose state first':'Choose '+label.toLowerCase())}</select></label><small data-location-results role="status" aria-live="polite"></small></div>`;
+ }
+ function enquiryFields(profile={}){
+  const state=find(Object.keys(IndiaGeography),profile.state),district=find(IndiaGeography[state]||[],profile.district);
+  return `<div data-enquiry-location>${searchable('State / Union territory','state',Object.keys(IndiaGeography),state)}<div data-enquiry-district>${searchable('District','district',IndiaGeography[state]||[],district,!state)}</div></div>`;
+ }
+ document.addEventListener('input',event=>{
+  const input=event.target,host=input.closest('[data-enquiry-location]');if(!host||!input.dataset.locationSearch)return;
+  const name=input.dataset.locationSearch,choice=input.closest('[data-location-choice]'),select=choice.querySelector('select'),current=select.value;
+  const all=name==='state'?Object.keys(IndiaGeography):(IndiaGeography[host.querySelector('[name="state"]').value]||[]),matches=all.filter(item=>item.toLowerCase().includes(input.value.trim().toLowerCase()));
+  // Keep the saved selection while searching; only selecting another state changes the district.
+  select.innerHTML=options(current&&!matches.includes(current)?[current,...matches]:matches,current,'Choose '+(name==='state'?'state / Union territory':'district'));
+  choice.querySelector('[data-location-results]').textContent=matches.length?`${matches.length} matching ${name==='state'?'states / Union territories':'districts'}.`:'No matches. Try another search.';
+ });
  document.addEventListener('change',event=>{
+  const enquiry=event.target.closest('[data-enquiry-location]');
+  if(enquiry&&event.target.name==='state')enquiry.querySelector('[data-enquiry-district]').innerHTML=searchable('District','district',IndiaGeography[event.target.value]||[],'',!event.target.value);
   const host=event.target.closest('[data-company-location]');if(!host)return;
   if(event.target.name==='state')host.querySelector('[data-district-fields]').innerHTML=districts(event.target.value);
   if(event.target.name==='district'){
@@ -24,5 +41,5 @@ window.CompanyLocation=(()=>{
    label.hidden=!custom;input.disabled=!custom;input.required=custom;if(custom)input.focus();
   }
  });
- return {fields,values};
+ return {fields,values,enquiryFields};
 })();

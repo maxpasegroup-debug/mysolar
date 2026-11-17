@@ -25,7 +25,7 @@ test('form uses required dependent controls, restores values and escapes legacy 
  assert.match(saved,/value="Kerala" selected/);assert.match(saved,/value="Kozhikode" selected/);
  assert.match(ui.fields({state:'Kerala',district:'<Renamed>'}),/value="&lt;Renamed>"/);
  let content='';const host={querySelector:()=>({set innerHTML(value){content=value;}})};
- listeners.change({target:{name:'state',value:'Tamil Nadu',closest:()=>host}});
+ listeners.change({target:{name:'state',value:'Tamil Nadu',closest:selector=>selector==='[data-company-location]'?host:null}});
  assert.match(content,/Chennai/);assert.doesNotMatch(content,/Kozhikode/);assert.doesNotMatch(content,/selected/);
  const values=ui.values({querySelector:()=>true,elements:{countryCode:{value:'IN'},state:{value:'Kerala'},district:{value:'__other__'},districtOther:{value:' New district '}}});
  assert.equal(values.district,'New district');

@@ -118,7 +118,7 @@ test('failed review journaling rolls back the existing transaction instead of co
  await assert.rejects(action(db,'approve'),/Fixture journal unavailable/);assert.ok(db.calls.some(x=>x.sql==='ROLLBACK'));assert.ok(!db.calls.some(x=>x.sql==='COMMIT'));
  // This proves transaction control flow only, not PostgreSQL rollback semantics.
 });
-const enquiry={title:'[TEST] Solar advice',requestedItem:'Solar consultation',categoryId:'',productId:'',offerId:'',quantity:'',unit:'',projectType:'advice',state:'Kerala',district:'Test District',pin:'673001',locality:'',address:'',requirements:'',contactMethod:'in_app',timeframe:'',mode:'direct',service:'energy_consultation',companyIds:[id],submissionKey:'30000000-0000-4000-8000-000000000001'};
+const enquiry={title:'[TEST] Solar advice',requestedItem:'Solar consultation',categoryId:'',productId:'',offerId:'',quantity:'',unit:'',projectType:'advice',state:'Kerala',district:'Kozhikode',pin:'673001',locality:'',address:'',requirements:'',contactMethod:'in_app',timeframe:'',mode:'direct',service:'energy_consultation',companyIds:[id],submissionKey:'30000000-0000-4000-8000-000000000001'};
 test('customer request routes only to selected published company and records in-app notification',async()=>{
  const db=fixture({userId:customer,accountType:'customer'});pool.connect=async()=>db;const r=req(enquiry);r.session.user_id=customer;let response;
  await handler(purchaseCustomer,'/enquiries','post')(r,{status(n){assert.equal(n,201);return this;},json:v=>{response=v;}});

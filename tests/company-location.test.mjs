@@ -29,4 +29,9 @@ test('form uses required dependent controls, restores values and escapes legacy 
  assert.match(content,/Chennai/);assert.doesNotMatch(content,/Kozhikode/);assert.doesNotMatch(content,/selected/);
  const values=ui.values({querySelector:()=>true,elements:{countryCode:{value:'IN'},state:{value:'Kerala'},district:{value:'__other__'},districtOther:{value:' New district '}}});
  assert.equal(values.district,'New district');
+ const enquiry=ui.enquiryFields();
+ assert.equal((enquiry.match(/role="combobox"/g)||[]).length,2);
+ assert.doesNotMatch(enquiry,/data-location-search|<select|Search state|Search district/);
+ assert.match(enquiry,/id="enquiry-location-district"[^>]*disabled/);
+ assert.match(ui.enquiryFields({state:'Kerala',district:'Kozhikode'}),/name="district" value="Kozhikode"/);
 });

@@ -12,6 +12,7 @@ const own=(req,fn,quotes=false)=>s.withCustomer(req,quotes?'customer.quotations.
 purchaseCustomer.get('/enquiry-options',async(req,res)=>{v.body(req.query,['productId','companyId','offerId'],[]);res.json(await own(req,async(db,user)=>{
  let product=null,vendor=null;if(req.query.productId){const {publishedProduct}=await import('../marketplace/service.js');product=await publishedProduct(db,v.uuid(req.query.productId));}
  if(req.query.companyId)vendor=(await db.query('SELECT id,name FROM marketplace_vendors WHERE id=$1',[v.uuid(req.query.companyId)])).rows[0]||null;
+ if(req.query.companyId&&!vendor)throw s.conflict('The selected distributor is no longer published or eligible. Return to Find Solar Companies to choose a distributor.');
  if(req.query.offerId){const offer=(await db.query('SELECT id,company_id,product_id FROM marketplace_offers WHERE id=$1',[v.uuid(req.query.offerId)])).rows[0];if(!offer||offer.company_id!==vendor?.id||offer.product_id!==product?.id)throw s.conflict('This marketplace offer is no longer available.');}
  return {categories:await filterCategories(db),product,vendor,profile:(await db.query('SELECT phone FROM customer_profiles WHERE user_id=$1',[user.id])).rows[0],submissionKey:randomUUID()};
 }));});

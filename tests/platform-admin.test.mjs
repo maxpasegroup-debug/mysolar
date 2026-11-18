@@ -48,6 +48,7 @@ function fixture(options={}){
   if(sql.startsWith('SELECT id FROM companies'))return result([{id}]);
   if(sql.startsWith('SELECT id FROM customer_enquiries'))return result([]);
   if(sql.startsWith('SELECT v.id,v.name,v.city FROM marketplace_vendors'))return result((args[0]||[]).filter(x=>x===id).map(x=>({id:x,name:c.name,city:'Test District'})));
+  if(sql.startsWith('SELECT id,name,services FROM marketplace_vendors'))return result(args[0]===id?[{id,name:c.name,services:['energy_consultation']}]:[]);
   if(sql.startsWith('SELECT phone FROM customer_profiles'))return result([{phone:''}]);
   if(sql.startsWith('INSERT INTO customer_enquiries')){db.enquiryArgs=args;return result([]);}
   if(sql.startsWith('INSERT INTO enquiry_recipients')){recipients.push(args);return result([]);}

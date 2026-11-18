@@ -17,8 +17,10 @@ window.CompanyLocation=(()=>{
   return {countryCode:form.elements.countryCode.value,state:form.elements.state.value,district};
  }
  function searchable(label,name,current='',disabled=false){
-  const id='enquiry-location-'+name;
-  return `<div data-location-choice="${name}"><input type="hidden" name="${name}" value="${e(current)}" ${disabled?'disabled':''}><label for="${id}">${label} *</label><div class="location-combobox"><input id="${id}" type="search" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${id}-list" required autocomplete="off" autocapitalize="none" spellcheck="false" value="${e(current)}" placeholder="${disabled?'Choose state first':'Select or type to search'}" ${disabled?'disabled':''}><span aria-hidden="true">▾</span><div id="${id}-list" role="listbox" aria-label="${label}" hidden></div></div><small data-location-results role="status" aria-live="polite"></small></div>`;
+  // Visible inputs search options; only the hidden fields are address values.
+  // Neutral IDs avoid inviting browser address-field classification.
+  const id='solar-choice-'+(name==='state'?'0':'1');
+  return `<div data-location-choice="${name}"><input type="hidden" name="${name}" value="${e(current)}" ${disabled?'disabled':''}><label for="${id}">${label} *</label><div class="location-combobox"><input id="${id}" type="search" inputmode="search" enterkeyhint="search" role="combobox" aria-haspopup="listbox" aria-autocomplete="list" aria-expanded="false" aria-controls="${id}-list" required autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" value="${e(current)}" placeholder="${disabled?'Choose state first':'Select or type to search'}" ${disabled?'disabled':''}><span aria-hidden="true">▾</span><div id="${id}-list" role="listbox" aria-label="${label}" hidden></div></div><small data-location-results role="status" aria-live="polite"></small></div>`;
  }
  function enquiryFields(profile={}){
   const state=find(Object.keys(IndiaGeography),profile.state),district=find(IndiaGeography[state]||[],profile.district);

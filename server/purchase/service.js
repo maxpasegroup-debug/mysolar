@@ -22,7 +22,22 @@ export async function matching(db,data,page=1,companyId=null){
  const b=new Bindings(),where=[areaMatch(b,data.location)];if(companyId)where.push(`v.id=${b.add(companyId)}`);
  if(data.service)where.push(`${b.add(data.service)}=ANY(v.services)`);
  if(data.productId||data.categoryId||data.offerId){const terms=['o.company_id=v.id',areaMatch(b,data.location,'v.id','o.coverage_labels')];if(data.productId)terms.push(`o.product_id=${b.add(data.productId)}`);if(data.categoryId){const c=b.add(data.categoryId);terms.push(`(p.category_id=${c} OR p.subcategory_id=${c})`);}if(data.offerId)terms.push(`o.id=${b.add(data.offerId)}`);where.push(`EXISTS(SELECT 1 FROM marketplace_offers o JOIN marketplace_products p ON p.id=o.product_id WHERE ${terms.join(' AND ')})`);}
- return {...await paged(db,'v.id,v.name,v.city,v.services,v.service_areas','FROM marketplace_vendors v',where.join(' AND '),b,page,'v.name,v.id'),product};
+ const result=await paged(db,'v.id,v.name,v.city,v.services,v.service_areas','FROM marketplace_vendors v',where.join(' AND '),b,page,'v.name,v.id');
+ if(companyId&&!result.total)result.mismatch=await mismatch(db,data,companyId);
+ return {...result,product};
+}
+async function mismatch(db,data,companyId){
+ // Explain only currently public information; never disclose private company states.
+ const vendor=(await db.query('SELECT id,name,services FROM marketplace_vendors WHERE id=$1',[companyId])).rows[0];
+ if(!vendor)return {code:'DISTRIBUTOR_UNAVAILABLE',message:'The selected distributor is no longer publicly available for this request. Return to Find Solar Companies.'};
+ if(data.service&&!vendor.services.includes(data.service))return {code:'SERVICE_NOT_LISTED',message:`${vendor.name} does not currently list the requested service. Choose a service it offers or another distributor.`};
+ const b=new Bindings(),predicate=areaMatch(b,data.location);b.values.push(companyId);
+ const covered=(await db.query(`SELECT 1 FROM marketplace_vendors v WHERE ${predicate} AND v.id=$${b.values.length}`,b.values)).rowCount;
+ if(!covered){
+  const incomplete=(await db.query("SELECT 1 FROM company_service_areas WHERE company_id=$1 AND state_key='' LIMIT 1",[companyId])).rowCount;
+  return {code:incomplete?'COVERAGE_INCOMPLETE':'LOCATION_NOT_COVERED',message:`${vendor.name} does not currently list this installation location in its service coverage.`+(incomplete?' Its published coverage contains unstructured area names; the distributor needs to confirm structured coverage.':' Check the installation State, District and PIN, or choose another distributor.')};
+ }
+ return {code:'OFFER_NOT_AVAILABLE',message:`${vendor.name} has no eligible published offer for the selected product or category and location. For general advice, leave the product category blank and select a listed service.`};
 }
 export async function eligibleRecipients(db,data){
  if(data.companyIds.length)await db.query('SELECT id FROM companies WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE',[data.companyIds]);
@@ -40,7 +55,7 @@ export async function eligibleRecipients(db,data){
  if(data.productId&&data.categoryId){const p=await publishedProduct(db,data.productId);if(![p.category_id,p.subcategory_id].includes(data.categoryId))throw badInput('Product and category do not match.');}
  if(data.productId||data.categoryId||data.offerId){const terms=['o.company_id=v.id',areaMatch(b,data.location,'v.id','o.coverage_labels')];if(data.productId)terms.push(`o.product_id=${b.add(data.productId)}`);if(data.categoryId){const c=b.add(data.categoryId);terms.push(`(p.category_id=${c} OR p.subcategory_id=${c})`);}if(data.offerId)terms.push(`o.id=${b.add(data.offerId)}`);where.push(`EXISTS(SELECT 1 FROM marketplace_offers o JOIN marketplace_products p ON p.id=o.product_id WHERE ${terms.join(' AND ')})`);}
  const rows=(await db.query(`SELECT v.id,v.name,v.city FROM marketplace_vendors v WHERE ${where.join(' AND ')} ORDER BY v.id`,b.values)).rows;
- if(rows.length!==data.companyIds.length)throw conflict('A selected distributor is no longer eligible for this request and location. Review recipients again.');return rows;
+ if(rows.length!==data.companyIds.length){const missing=data.companyIds.find(id=>!rows.some(row=>row.id===id));throw conflict((await mismatch(db,data,missing)).message);}return rows;
 }
 export async function event(db,{enquiryId,companyId=null,actor,action,versionId=null,customerVisible=true,metadata={}}){
  await db.query('INSERT INTO enquiry_events(enquiry_id,company_id,actor_id,action,version_id,customer_visible) VALUES($1,$2,$3,$4,$5,$6)',[enquiryId,companyId,actor,action,versionId,customerVisible]);

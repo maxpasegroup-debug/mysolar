@@ -32,6 +32,9 @@ test('form uses required dependent controls, restores values and escapes legacy 
  const enquiry=ui.enquiryFields();
  assert.equal((enquiry.match(/role="combobox"/g)||[]).length,2);
  assert.doesNotMatch(enquiry,/data-location-search|<select|Search state|Search district/);
- assert.match(enquiry,/id="enquiry-location-district"[^>]*disabled/);
+ assert.match(enquiry,/id="solar-choice-1"[^>]*disabled/);
+ const searches=enquiry.match(/<input[^>]+role="combobox"[^>]*>/g);
+ assert.equal(searches.length,2);
+ for(const input of searches){assert.match(input,/type="search" inputmode="search"/);assert.match(input,/autocomplete="off"/);assert.match(input,/aria-haspopup="listbox"/);assert.doesNotMatch(input,/name=|address-level|id="[^"]*(?:state|district)/);}
  assert.match(ui.enquiryFields({state:'Kerala',district:'Kozhikode'}),/name="district" value="Kozhikode"/);
 });

@@ -219,7 +219,7 @@ window.Account = (() => {
   async function run(action,formElement){
     if(submitting)return;submitting=true;flash='';const submit=formElement?.querySelector('button[type="submit"],button:not([type])');if(submit)submit.disabled=true;
     try{await action();}
-    catch(error){flash=error.message;const feedbackElement=formElement?.querySelector('#account-feedback')||document.getElementById('account-feedback');if(feedbackElement)feedbackElement.textContent=flash;else announce(flash);if(!state.user&&isPrivate(path())&&!(formElement?.id==='account-login'&&formElement.isConnected))render();}
+    catch(error){if(formElement&&!formElement.isConnected)return;flash=error.message;const feedbackElement=formElement?.querySelector('#account-feedback')||document.getElementById('account-feedback');if(feedbackElement)feedbackElement.textContent=flash;else announce(flash);if(!state.user&&isPrivate(path())&&!(formElement?.id==='account-login'&&formElement.isConnected))render();}
     finally{submitting=false;if(submit?.isConnected)submit.disabled=false;}
   }
   document.addEventListener('submit',event=>{

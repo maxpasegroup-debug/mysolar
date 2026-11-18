@@ -63,6 +63,54 @@ test('reviewed locality coverage never widens to the shared postal area',{skip:!
   assert.equal((await match()).total,1);await db.query('UPDATE companies SET storefront_published=false WHERE id=$1',[companyA]);assert.equal((await match()).total,0);await expect(submit(),409);await db.query('UPDATE companies SET storefront_published=true WHERE id=$1',[companyA]);
   await expect(operator.request('/platform/localities/import','POST',{...references,rows:[{pin:'670307',name:'[TEST] Harbour',active:false}]}),200);assert.equal((await match()).total,0);await expect(submit(),409);await expect(operator.request('/platform/localities/import','POST',{...references,rows:[references.rows[0]]}),200);
  });
+ await t.test('public profile retains published information with safe missing/inactive reference status',async()=>{
+  const profile=()=>customer.request('/public/vendors/'+companyA);
+  assert.equal((await expect(profile(),200)).quotationCoverage.verified,true);
+  await db.query('UPDATE company_service_areas SET locality_reference_id=NULL WHERE company_id=$1',[companyA]);
+  let publicData=await expect(profile(),200);assert.equal(publicData.quotationCoverage.verified,false);assert.equal(publicData.vendor.name,'[TEST] Locality Solar');
+  assert.doesNotMatch(JSON.stringify(publicData),/This State, District and PIN combination has no reviewed postal reference/);await expect(submit(),409);
+  await save(a,companyA,[declaration('[TEST] Harbour'),declaration('[TEST] Riverside')]);
+  await db.query("UPDATE postal_locations SET active=false WHERE pin='670307'");
+  assert.equal((await expect(profile(),200)).quotationCoverage.verified,false);await expect(submit(),409);
+  await db.query("UPDATE postal_locations SET active=true WHERE pin='670307'");
+  await db.query("UPDATE postal_localities SET active=false WHERE pin='670307'");
+  assert.equal((await expect(profile(),200)).quotationCoverage.verified,false);await expect(submit(),409);
+  await db.query("UPDATE postal_localities SET active=true WHERE pin='670307'");
+  assert.equal((await expect(profile(),200)).quotationCoverage.verified,true);
+ });
+ await t.test('simultaneous coverage/reference withdrawals serialize with final routing',async()=>{
+  const lock=await fx.connection();
+  const {eligibleRecipients}=await import('../server/purchase/service.js');
+  const {enquiry:validate}=await import('../server/purchase/validation.js');
+  const data=()=>validate({...payload,companyIds:[companyA],submissionKey:randomUUID()});
+  const blocked=async()=>{
+   const end=Date.now()+8000;
+   while(Date.now()<end){
+    const r=await db.query('SELECT count(*)::int n FROM pg_stat_activity WHERE $1::int=ANY(pg_blocking_pids(pid))',[lock.processID]);
+    if(r.rows[0].n)return;
+    await new Promise(r=>setTimeout(r,25));
+   }
+   assert.fail('Expected a real PostgreSQL lock wait, not merely a pending promise');
+  };
+  try{
+   // Withdrawal wins: the real HTTP final submission waits, then sees no coverage.
+   await lock.query('BEGIN');await lock.query('SELECT id FROM companies WHERE id=$1 FOR UPDATE',[companyA]);
+   await lock.query('DELETE FROM company_service_areas WHERE company_id=$1',[companyA]);
+   const pending=submit();await blocked();await lock.query('COMMIT');
+   await expect(pending,409);
+   await save(a,companyA,[declaration('[TEST] Harbour'),declaration('[TEST] Riverside')]);
+   // Routing wins: the existing HTTP owner coverage change waits for the routing transaction.
+   await lock.query('BEGIN');assert.equal((await eligibleRecipients(lock,data())).length,1);
+   const changed=a.request('/companies/current/service-areas','PUT',{revision:await revision(companyA),areas:[declaration('[TEST] Riverside')]});
+   await blocked();await lock.query('COMMIT');await expect(changed,200);await expect(submit(),409);
+   await save(a,companyA,[declaration('[TEST] Harbour'),declaration('[TEST] Riverside')]);
+   // Reference withdrawal waits for the same final-routing shared reference lock.
+   await lock.query('BEGIN');assert.equal((await eligibleRecipients(lock,data())).length,1);
+   const withdrawn=operator.request('/platform/localities/import','POST',{...references,rows:[{...references.rows[0],active:false}]});
+   await blocked();await lock.query('COMMIT');await expect(withdrawn,200);await expect(submit(),409);
+   await expect(operator.request('/platform/localities/import','POST',{...references,rows:[references.rows[0]]}),200);
+  }finally{await lock.query('ROLLBACK');await lock.end();}
+ });
  await t.test('customer creates one direct enquiry, intended company responds, other tenant cannot read',async()=>{
   const sent=await expect(submit(),201);assert.equal((await expect(a.request('/companies/current/enquiries/'+sent.id),200)).enquiry.locality,'[TEST] Harbour');await expect(b.request('/companies/current/enquiries/'+sent.id),404);await expect(stranger.request('/customer/enquiries/'+sent.id),404);
   const quote=fx.quote(1);quote.items[0].productId=null;const draft=await expect(a.request('/companies/current/enquiries/'+sent.id+'/quotations','POST',quote),201);await expect(a.request('/companies/current/quotations/'+draft.id+'/actions','POST',{revision:1,action:'send'}),200);assert.equal((await expect(customer.request('/customer/quotations/'+draft.id),200)).quote.total_paise,'11800');

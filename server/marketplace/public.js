@@ -71,6 +71,13 @@ discovery.get('/vendors/:id',async(req,res)=>{
     const result=await db.query('SELECT * FROM marketplace_vendors WHERE id=$1',[id]);if(!result.rowCount)throw new HttpError(404,'NOT_FOUND','Published distributor profile not found.');
     const areas=await db.query('SELECT scope,label,state,district,pin,locality FROM company_service_areas WHERE company_id=$1 ORDER BY label LIMIT 20',[id]);
     const bind=new Bindings(),where=[`o.company_id=${bind.add(id)}`];if(hasLocation(q))where.push(areaMatch(bind,q,'o.company_id','o.coverage_labels'));if(q.search){const key=bind.add(q.search);where.push(`(p.name ILIKE '%'||${key}||'%' OR p.brand ILIKE '%'||${key}||'%' OR p.model ILIKE '%'||${key}||'%')`);}if(q.category){const key=bind.add(q.category);where.push(`(p.category_id=${key} OR p.subcategory_id=${key})`);}const offers=await paged(db,'o.*,p.name AS product_name,p.brand,p.model,p.image_urls,p.kind,p.category_name','FROM marketplace_offers o JOIN marketplace_products p ON p.id=o.product_id',where.join(' AND '),bind,page,'p.name,o.id');
-    return {vendor:publicBrand(result.rows[0]),areas:areas.rows,offers,categories:await filterCategories(db)};
+    // Reuse routing rules for declared areas; never run the owner-save validator on a public read.
+    let verified=false;
+    for(const area of areas.rows){
+      const b=new Bindings(),match=areaMatch(b,{state:input.normalize(area.state),district:input.normalize(area.district),pin:area.pin,locality:input.normalize(area.locality)},'v.id',b.add([area.label])+'::text[]');
+      if((await db.query(`SELECT 1 FROM marketplace_vendors v WHERE v.id=${b.add(id)} AND ${match}`,b.values)).rowCount){verified=true;break;}
+    }
+    const quotationCoverage={verified,message:verified?'Installation coverage will be checked before your request is sent.':'Quotation requests are temporarily unavailable while this company confirms its service locations. You can still view its published information.'};
+    return {vendor:publicBrand(result.rows[0]),areas:areas.rows,quotationCoverage,offers,categories:await filterCategories(db)};
   }));
 });

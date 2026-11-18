@@ -5,9 +5,17 @@ export function areaMatch(bind,q,company='v.id',coverage=null){
   const conditions=[`a.company_id=${company}`];
   if(coverage)conditions.push(`(cardinality(${coverage})=0 OR a.label=ANY(${coverage}))`);
   if(q.state)conditions.push(`a.state_key=${bind.add(q.state)}`);
-  if(q.district){const key=bind.add(q.district);conditions.push(`(a.district_key=${key} OR a.locality_key=${key}${q.state?" OR a.scope='state'":''})`);}
-  if(q.pin){const pin=bind.add(q.pin);conditions.push(`(a.pin=${pin} OR a.locality_key=${pin} OR EXISTS(SELECT 1 FROM postal_locations loc WHERE loc.pin=${pin} AND loc.active AND a.state_key=loc.state_key AND (a.scope='state' OR a.scope='district' AND a.district_key=loc.district_key)))`);}
-  if(q.area){const key=bind.add(q.area);conditions.push(`(a.locality_key=${key} OR a.district_key=${key} OR a.state_key=${key} OR a.pin=${key})`);}
+  if(q.district){const key=bind.add(q.district);conditions.push(`(a.district_key=${key}${q.state?" OR a.scope='state'":''})`);}
+  const locality=q.locality||q.area||'';
+  const local=locality&&q.pin?bind.add(normalize(locality)):null;
+  // Scopes are exclusive. A locality declaration can never act as PIN/district coverage.
+  conditions.push(`((a.scope='state' AND a.state_key<>'' AND a.district_key='' AND a.pin='' AND a.locality_key='') OR (a.scope='district' AND a.state_key<>'' AND a.district_key<>'' AND a.pin='' AND a.locality_key='') OR (a.scope='pin' AND a.state_key<>'' AND a.district_key<>'' AND a.pin<>'' AND a.locality_key='') OR (a.scope='locality' AND ${q.state&&q.district&&q.pin&&local?`a.locality_key=${local} AND EXISTS(SELECT 1 FROM postal_localities ref WHERE ref.id=a.locality_reference_id AND ref.pin=a.pin AND ref.locality_key=a.locality_key AND ref.active)`:'false'}))`);
+  if(q.pin){
+   const pin=bind.add(q.pin);
+   conditions.push(`EXISTS(SELECT 1 FROM postal_locations loc WHERE loc.pin=${pin} AND loc.active AND a.state_key=loc.state_key AND (a.scope='state' OR a.district_key=loc.district_key)${q.district?` AND loc.district_key=${bind.add(q.district)}`:''}${local?` AND EXISTS(SELECT 1 FROM postal_localities requested WHERE requested.pin=loc.pin AND requested.locality_key=${local} AND requested.active)`:''})`);
+   conditions.push(`(a.scope IN ('state','district') OR a.pin=${pin})`);
+  }
+  if(q.area&&!q.pin){const key=bind.add(q.area);conditions.push(`(a.locality_key=${key} OR a.district_key=${key} OR a.state_key=${key} OR a.pin=${key})`);}
   return `EXISTS(SELECT 1 FROM company_service_areas a WHERE ${conditions.join(' AND ')})`;
 }
 export const hasLocation=q=>Boolean(q.state||q.district||q.pin||q.area);

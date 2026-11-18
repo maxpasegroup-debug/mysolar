@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import {seedReviewedLocation} from './reviewed-locations.mjs';
 
 // Called only inside the explicitly designated disposable PostgreSQL schema.
 export async function purchaseFlows(t,{db,a,b,customer,stranger,companyA,companyB,client}){
+ await seedReviewedLocation(db,a.user.id);
  const category='10000000-0000-4000-8000-000000000001',product=randomUUID(),offers=[];
  for(const [company,owner] of [[companyA,a],[companyB,b]]){
   await db.query("UPDATE company_branding SET description='[TEST] published fixture',public_email='fixture@example.invalid' WHERE company_id=$1",[company]);

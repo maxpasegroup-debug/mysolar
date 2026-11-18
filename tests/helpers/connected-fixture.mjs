@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {isolatedApp} from './isolated-app.mjs';
+import {seedReviewedLocation} from './reviewed-locations.mjs';
 export async function connectedFixture(t,{beforeStart,strangerAccountType='business',port=0}={}){
  // This fixture represents existing companies on the preserved pre-billing policy.
  // New enrolled companies and activation guards have dedicated trial integration tests.
@@ -8,6 +9,7 @@ export async function connectedFixture(t,{beforeStart,strangerAccountType='busin
  const {db}=fixture,a=fixture.client(),b=fixture.client(),customer=fixture.client(),stranger=fixture.client();
  for(const [client,name] of [[a,'journey-owner-a'],[b,'journey-owner-b'],[customer,'journey-customer'],[stranger,'journey-stranger']])await client.register(name,client===customer?'customer':client===stranger?strangerAccountType:'business');
  const companyA=await a.createCompany('journey-company-a'),companyB=await b.createCompany('journey-company-b'),product=randomUUID(),category='10000000-0000-4000-8000-000000000001';
+ await seedReviewedLocation(db,a.user.id,{names:['Kochi']});
  for(const [company,owner] of [[companyA,a],[companyB,b]]){
   await db.query("UPDATE company_branding SET description='[TEST] published solar company',public_email='fixture@example.invalid' WHERE company_id=$1",[company]);
   await db.query("UPDATE companies SET marketplace_status='approved',storefront_published=true WHERE id=$1",[company]);

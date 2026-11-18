@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID,randomBytes} from 'node:crypto';
 import {isolatedApp} from './helpers/isolated-app.mjs';
 import {migrationManifest} from '../server/db/migrations.js';
+import {seedReviewedLocation} from './helpers/reviewed-locations.mjs';
 
 test('real disposable PostgreSQL: registration, independent approval, marketplace enquiry and issued quotation', {skip:!process.env.TEST_DATABASE_URL?'BLOCKED: dedicated loopback disposable PostgreSQL required':false,timeout:180000},async t=>{
  const env=await isolatedApp(t),{db}=env;
@@ -50,6 +51,7 @@ test('real disposable PostgreSQL: registration, independent approval, marketplac
   assert.equal((await db.query('SELECT count(*)::int AS n FROM platform_admin_grants')).rows[0].n,0);
  });
  // Explicit test administrator bootstrap in the verified disposable schema only.
+ await seedReviewedLocation(db,operator.user.id);
  await db.query("INSERT INTO platform_admin_grants(user_id,reason) VALUES($1,'[TEST] independent operator bootstrap in disposable cluster')",[operator.user.id]);
  const setup=async client=>(await expect(client.request('/companies/current/setup'),200));
  async function complete(client,name){

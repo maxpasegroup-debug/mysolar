@@ -55,7 +55,8 @@ test('marketplace discovery uses eligible offers, real prices and customer-owned
   assert.equal((await customer.request('/public/products?category='+category)).data.total,0);
  });
  await t.test('coverage is exact or reviewed-region based, and preview counts use the same scope',async()=>{
-  await db.query("UPDATE company_service_areas SET pin='673014' WHERE company_id=$1",[companyB]);
+  await db.query("INSERT INTO postal_locations(pin,state,district,state_key,district_key,source_reference,reviewed_by) VALUES('673014','Kerala','Kozhikode','kerala','kozhikode','[TEST] reviewed fixture',$1)",[a.user.id]);
+  await db.query("UPDATE company_service_areas SET pin='673014',district='Kozhikode',district_key='kozhikode' WHERE company_id=$1",[companyB]);
   const r=await customer.request('/public/products?pin=673014');assert.equal(r.data.locationFiltered,true);assert.equal(r.data.items[0].offer_count,1);assert.equal(r.data.items[0].offer_previews[0].company_id,companyB);
   assert.equal((await customer.request('/public/products?pin=999999')).data.total,0);
   assert.equal((await customer.request('/public/products?pin=123')).status,400);

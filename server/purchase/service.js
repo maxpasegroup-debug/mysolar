@@ -24,12 +24,14 @@ export async function matching(db,data,page=1,companyId=null){
  if(data.productId||data.categoryId||data.offerId){const terms=['o.company_id=v.id',areaMatch(b,data.location,'v.id','o.coverage_labels')];if(data.productId)terms.push(`o.product_id=${b.add(data.productId)}`);if(data.categoryId){const c=b.add(data.categoryId);terms.push(`(p.category_id=${c} OR p.subcategory_id=${c})`);}if(data.offerId)terms.push(`o.id=${b.add(data.offerId)}`);where.push(`EXISTS(SELECT 1 FROM marketplace_offers o JOIN marketplace_products p ON p.id=o.product_id WHERE ${terms.join(' AND ')})`);}
  const result=await paged(db,'v.id,v.name,v.city,v.services,v.service_areas','FROM marketplace_vendors v',where.join(' AND '),b,page,'v.name,v.id');
  if(companyId&&!result.total)result.mismatch=await mismatch(db,data,companyId);
+ if(!companyId&&!result.total)result.mismatch=await locationMismatch(db,data)||{code:'LOCATION_NOT_COVERED',message:'No published distributor has verified coverage for the selected installation locality and service.'};
  return {...result,product};
 }
 async function mismatch(db,data,companyId){
  // Explain only currently public information; never disclose private company states.
  const vendor=(await db.query('SELECT id,name,services FROM marketplace_vendors WHERE id=$1',[companyId])).rows[0];
  if(!vendor)return {code:'DISTRIBUTOR_UNAVAILABLE',message:'The selected distributor is no longer publicly available for this request. Return to Find Solar Companies.'};
+ const problem=await locationMismatch(db,data);if(problem)return problem;
  if(data.service&&!vendor.services.includes(data.service))return {code:'SERVICE_NOT_LISTED',message:`${vendor.name} does not currently list the requested service. Choose a service it offers or another distributor.`};
  const b=new Bindings(),predicate=areaMatch(b,data.location);b.values.push(companyId);
  const covered=(await db.query(`SELECT 1 FROM marketplace_vendors v WHERE ${predicate} AND v.id=$${b.values.length}`,b.values)).rowCount;
@@ -39,7 +41,16 @@ async function mismatch(db,data,companyId){
  }
  return {code:'OFFER_NOT_AVAILABLE',message:`${vendor.name} has no eligible published offer for the selected product or category and location. For general advice, leave the product category blank and select a listed service.`};
 }
+async function locationMismatch(db,data){
+ const postal=(await db.query('SELECT state_key,district_key FROM postal_locations WHERE pin=$1 AND active',[data.pin])).rows[0];
+ if(!postal||postal.state_key!==data.location.state||postal.district_key!==data.location.district)return {code:'POSTAL_UNVERIFIED',message:'This installation State, District and PIN combination cannot be verified against reviewed postal data. No request will be sent.'};
+ if(data.location.locality&&!(await db.query('SELECT id FROM postal_localities WHERE pin=$1 AND locality_key=$2 AND active',[data.pin,data.location.locality])).rowCount)return {code:'LOCALITY_UNVERIFIED',message:'Choose a reviewed locality for this installation PIN. If it is missing, contact support to have the location independently reviewed.'};
+ return null;
+}
 export async function eligibleRecipients(db,data){
+ // Keep reference withdrawals stable until routing commits, just like company publication.
+ await db.query('SELECT pin FROM postal_locations WHERE pin=$1 AND active FOR SHARE',[data.pin]);
+ if(data.location.locality)await db.query('SELECT id FROM postal_localities WHERE pin=$1 AND locality_key=$2 AND active FOR SHARE',[data.pin,data.location.locality]);
  if(data.companyIds.length)await db.query('SELECT id FROM companies WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE',[data.companyIds]);
  if(data.companyIds.length&&(data.productId||data.categoryId||data.offerId)){
   // Hold definition/category publication stable until routing commits. Offer edits already lock their company.

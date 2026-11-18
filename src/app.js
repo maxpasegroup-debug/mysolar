@@ -156,6 +156,7 @@ function render(focus=false) {
   if(!Account.isDemo()&&(Account.session.platformPermissions||[]).includes('platform.referrals.read'))document.querySelector('.platform-subnav')?.insertAdjacentHTML('beforeend',link('/platform/referrals','Customer referrals'));
   if(window.Experience)Experience.decorate(channel);
   if(window.CustomerDashboard)CustomerDashboard.decorate();
+  if(window.CompanyLocation)CompanyLocation.mount();
   if(window.SIA)SIA.decorate();
   if(window.Commercial)Commercial.decorate();
   if(window.BusinessAccess)BusinessAccess.decorate();

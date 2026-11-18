@@ -26,6 +26,23 @@ window.CompanyLocation=(()=>{
   const state=find(Object.keys(IndiaGeography),profile.state),district=find(IndiaGeography[state]||[],profile.district);
   return `<div data-enquiry-location>${searchable('State / Union territory','state',state)}<div data-enquiry-district>${searchable('District','district',district,!state)}</div></div>`;
  }
+ function localityField(){return '<label>Reviewed installation locality *<select name="locality" required disabled autocomplete="off" data-reviewed-locality><option value="">Choose State, District and PIN first</option></select><small role="status" aria-live="polite" data-locality-notice>Only independently reviewed locality names can be selected.</small></label>';}
+ let localityRequest=0;
+ function refreshLocalities(form){
+  const select=form.querySelector('[data-reviewed-locality]');if(!select)return;
+  const state=form.elements.state?.value||'',district=form.elements.district?.value||'',pin=form.elements.pin?.value||'',tuple=JSON.stringify([state,district,pin]);
+  if(form.dataset.localityTuple===tuple)return;form.dataset.localityTuple=tuple;
+  const ready=state&&district&&/^[1-9][0-9]{5}$/.test(pin),request=String(++localityRequest),notice=form.querySelector('[data-locality-notice]');
+  form.dataset.localityRequest=request;select.innerHTML='<option value="">'+(ready?'Choose a reviewed locality':'Choose State, District and PIN first')+'</option>';select.disabled=!ready;select.dispatchEvent(new Event('input',{bubbles:true}));
+  if(!ready){notice.textContent='Select the installation State, District and six-digit PIN.';return;}
+  notice.textContent='Loading reviewed localities…';
+  void Account.api('/public/locations/'+encodeURIComponent(pin)+'/localities?'+new URLSearchParams({state,district})).then(data=>{
+   if(!form.isConnected||form.dataset.localityRequest!==request)return;
+   select.innerHTML='<option value="">Choose a reviewed locality</option>'+data.items.map(item=>`<option value="${e(item.name)}">${e(item.name)}</option>`).join('');notice.textContent=data.notice;
+  }).catch(()=>{if(form.isConnected&&form.dataset.localityRequest===request)notice.textContent='Reviewed locations could not be loaded. Try the PIN again or contact support. No location is assumed.';});
+ }
+ document.addEventListener('input',event=>{const form=event.target.closest('#purchase-enquiry');if(form&&(['state','district','pin'].includes(event.target.name)||event.target.matches('[role="combobox"]')))refreshLocalities(form);});
+ document.addEventListener('change',event=>{const form=event.target.closest('#purchase-enquiry');if(form&&['state','district','pin'].includes(event.target.name))refreshLocalities(form);});
  const choiceFor=target=>target.closest('[data-enquiry-location]')&&target.closest('[data-location-choice]');
  function close(choice){const input=choice.querySelector('[role="combobox"]');input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');choice.querySelector('[role="listbox"]').hidden=true;}
  function resetDistrict(host){host.querySelector('[data-enquiry-district]').innerHTML=searchable('District','district','',!host.querySelector('[name="state"]').value);}
@@ -76,5 +93,6 @@ window.CompanyLocation=(()=>{
    label.hidden=!custom;input.disabled=!custom;input.required=custom;if(custom)input.focus();
   }
  });
- return {fields,values,enquiryFields};
+ function mount(){const form=document.querySelector('#purchase-enquiry');if(form&&!form.dataset.localityMounted){form.dataset.localityMounted='true';refreshLocalities(form);}}
+ return {fields,values,enquiryFields,localityField,refreshLocalities,mount};
 })();

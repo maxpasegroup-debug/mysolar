@@ -17,7 +17,7 @@ export function enquiry(value,preview=false){
  if(result.quantity===null&&result.unit)throw badInput('Leave the unit blank when quantity is unknown.');
  if(!result.productId&&!result.categoryId&&!result.service)throw badInput('Choose a category or service so distributors can be matched.');
  if(!preview){if(!Array.isArray(value.companyIds)||value.companyIds.length>10)throw badInput('Choose up to ten distributors.');result.companyIds=[...new Set(value.companyIds.map(v.uuid))];if(result.companyIds.length!==value.companyIds.length)throw badInput('Remove duplicate distributors.');if(result.mode==='direct'&&result.companyIds.length>1)throw badInput('A direct enquiry can go to only one distributor.');result.submissionKey=v.uuid(value.submissionKey);}
- result.location={state:normalize(result.state),district:normalize(result.district),pin:result.pin,area:''};return result;
+ result.location={state:normalize(result.state),district:normalize(result.district),pin:result.pin,locality:normalize(result.locality),area:''};return result;
 }
 export function quote(value){
  const fields=['revision','reference','validUntil','taxMode','items','delivery','installation','chargesTaxRate','included','excluded','warranty','timeframe','paymentTerms','assumptions','installationScope','estimated'];v.body(value,fields);

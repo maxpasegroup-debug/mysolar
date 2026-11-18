@@ -8,6 +8,7 @@ import { Bindings,paged,publishedProduct,eligibleCompany,offerHistory } from './
 import * as v from '../validation.js';
 import * as input from './validation.js';
 import { HttpError } from '../errors.js';
+import {reviewedCoverage} from './coverage.js';
 export const listings=Router();listings.use(requireUser);listings.use((req,res,next)=>['GET','HEAD'].includes(req.method)?next():csrf(req,res,next));
 listings.get('/offer-template',async(req,res)=>{v.body(req.query,['productId']);const id=v.uuid(req.query.productId);res.json(await withCompany(req,'offers.manage',async(db,ctx)=>({product:await publishedProduct(db,id),areas:(await db.query('SELECT label FROM company_service_areas WHERE company_id=$1 ORDER BY label LIMIT 20',[ctx.companyId])).rows.map(a=>a.label),units:input.units,permissions:ctx.permissions})));});
 listings.get('/offers',async(req,res)=>{
@@ -65,8 +66,9 @@ listings.put('/service-areas',async(req,res)=>{
   const data=input.areas(req.body);
   res.json(await withCompany(req,'service_areas.manage',async(db,ctx)=>{
     const company=(await db.query('SELECT * FROM companies WHERE id=$1',[ctx.companyId])).rows[0];expectRevision(company,data.revision);editable(company);
+    const areas=await reviewedCoverage(db,data.areas);
     await db.query('DELETE FROM company_service_areas WHERE company_id=$1',[ctx.companyId]);
-    for(const a of data.areas)await db.query('INSERT INTO company_service_areas(id,company_id,scope,label,state,district,pin,locality,state_key,district_key,locality_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',[randomUUID(),ctx.companyId,a.scope,a.label,a.state,a.district,a.pin,a.locality,input.normalize(a.state),input.normalize(a.district),input.normalize(a.locality)]);
+    for(const a of areas)await db.query('INSERT INTO company_service_areas(id,company_id,scope,label,state,district,pin,locality,state_key,district_key,locality_key,locality_reference_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',[randomUUID(),ctx.companyId,a.scope,a.label,a.state,a.district,a.pin,a.locality,input.normalize(a.state),input.normalize(a.district),input.normalize(a.locality),a.localityReferenceId]);
     await db.query('UPDATE company_business_profiles SET service_areas=$1,updated_at=now() WHERE company_id=$2',[data.areas.map(a=>a.label),ctx.companyId]);
     await markChanged(db,ctx,company,'company.service_areas_saved');return {message:'Coverage saved. Company publication requires renewed marketplace review.'};
   }));

@@ -36,5 +36,25 @@ test('missing locality references allow searching but reject free text',async()=
  const f=fixture();f.ui.refreshLocalities(f.form);f.requests[0].resolve({items:[]});await flush();
  assert.equal(f.input.disabled,false);assert.match(f.notice.textContent,/cannot verify/i);
  f.input.value='Payyanur';for(const handler of f.handlers.input)handler({target:f.input});
- assert.equal(f.saved.value,'');assert.match(f.input.validityMessage,/choose a location/i);assert.match(f.list.innerHTML,/No matches/);
+ assert.equal(f.saved.value,'');assert.match(f.input.validityMessage,/verified locality/i);assert.match(f.list.innerHTML,/No matches/);
+});
+
+test('typing a full reviewed locality accepts the canonical value without clicking a suggestion',async()=>{
+ const f=fixture();f.ui.refreshLocalities(f.form);f.requests[0].resolve({items:[{name:'Payyanur Town'},{name:'Other place'}]});await flush();
+ f.input.value='  payyanur   TOWN  ';for(const handler of f.handlers.input)handler({target:f.input});
+ assert.equal(f.saved.value,'Payyanur Town');assert.equal(f.input.validityMessage,'');
+ f.input.value='Payyanur';for(const handler of f.handlers.input)handler({target:f.input});
+ assert.equal(f.saved.value,'');assert.match(f.input.validityMessage,/verified locality/i);
+});
+
+test('typed localities wait for the current lookup and ambiguous normalized names are not auto-selected',async()=>{
+ const f=fixture();f.ui.refreshLocalities(f.form);
+ f.input.value='payyanur';for(const handler of f.handlers.input)handler({target:f.input});
+ assert.equal(f.saved.value,'');assert.match(f.input.validityMessage,/please wait/i);
+ f.requests[0].resolve({items:[{name:'Payyanur'}]});await flush();
+ assert.equal(f.saved.value,'Payyanur');assert.equal(f.input.validityMessage,'');
+ f.form.elements.pin.value='670308';f.ui.refreshLocalities(f.form);
+ f.input.value='payyanur';for(const handler of f.handlers.input)handler({target:f.input});
+ f.requests[1].resolve({items:[{name:'Payyanur'},{name:'PAYYANUR'}]});await flush();
+ assert.equal(f.saved.value,'');assert.match(f.input.validityMessage,/verified locality/i);
 });

@@ -15,7 +15,7 @@ window.CustomerLocale=(()=>{
  document.addEventListener('input',event=>{if(event.target.closest('.customer-desktop-shell')&&typeof event.target.setCustomValidity==='function')event.target.setCustomValidity('');});
  const formLabels={
   'Tell us what you need *':['നിങ്ങളുടെ ആവശ്യം പറയുക *','अपनी ज़रूरत बताएँ *'],
-  'State *':['സംസ്ഥാനം *','राज्य *'],'District *':['ജില്ല *','ज़िला *'],'PIN code *':['പിൻ കോഡ് *','पिन कोड *'],'Address *':['വിലാസം *','पता *'],
+  'State *':['സംസ്ഥാനം *','राज्य *'],'District *':['ജില്ല *','ज़िला *'],'PIN code *':['പിൻ കോഡ് *','पिन कोड *'],'Address *':['വിലാസം *','पता *'],'Street address · optional':['വിലാസം · നിർബന്ധമില്ല','सड़क का पता · वैकल्पिक'],
   'Locality · optional':['പ്രദേശം · നിർബന്ധമില്ല','इलाका · वैकल्पिक'],'Preferred contact *':['ബന്ധപ്പെടേണ്ട മാർഗം *','संपर्क का तरीका *'],
   'Who should receive this request? *':['ഈ അഭ്യർത്ഥന ആർക്ക് അയയ്ക്കണം? *','अनुरोध किसे भेजना है? *'],
   'Review eligible distributors':['അനുയോജ്യമായ വിതരണക്കാരെ പരിശോധിക്കുക','योग्य वितरकों को देखें'],

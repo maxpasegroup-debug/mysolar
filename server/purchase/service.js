@@ -25,7 +25,20 @@ export async function matching(db,data,page=1,companyId=null){
  const result=await paged(db,'v.id,v.name,v.city,v.services,v.service_areas','FROM marketplace_vendors v',where.join(' AND '),b,page,'v.name,v.id');
  if(companyId&&!result.total)result.mismatch=await mismatch(db,data,companyId);
  if(!companyId&&!result.total)result.mismatch=await locationMismatch(db,data)||{code:'LOCATION_NOT_COVERED',message:'No published distributor has verified coverage for the selected installation locality and service.'};
- return {...result,product};
+ // Coordinates are deliberately not inferred from company addresses or coverage names.
+ // Until independently reviewed coordinates exist, the UI may show a location list but
+ // must not present pins, distances, or a radius-based result as fact.
+ const discovery={mapAvailable:false,nearbyRadiusKm:25,reason:'Verified company coordinates are not available for map discovery.'};
+ const nearby=!result.total&&!companyId?await locationCandidates(db,data):null;
+ return {...result,product,discovery,nearby};
+}
+async function locationCandidates(db,data){
+ // This is an explicitly non-eligible fallback. It groups only published companies
+ // that declare some coverage in the requested district; it never claims they serve
+ // the selected PIN/locality, offer the requested product, or are physically nearby.
+ const b=new Bindings(),where=[areaMatch(b,{state:data.location.state,district:data.location.district,pin:'',locality:'',area:''})];
+ const result=await paged(db,'v.id,v.name,v.city,v.service_areas','FROM marketplace_vendors v',where.join(' AND '),b,1,'v.name,v.id',6);
+ return {mode:'location_list',coordinatesVerified:false,nearbyRadiusKm:25,total:result.total,items:result.items};
 }
 async function mismatch(db,data,companyId){
  // Explain only currently public information; never disclose private company states.

@@ -14,7 +14,13 @@ purchaseCustomer.get('/enquiry-options',async(req,res)=>{v.body(req.query,['prod
  if(req.query.companyId)vendor=(await db.query('SELECT id,name FROM marketplace_vendors WHERE id=$1',[v.uuid(req.query.companyId)])).rows[0]||null;
  if(req.query.companyId&&!vendor)throw s.conflict('The selected distributor is no longer published or eligible. Return to Find Solar Companies to choose a distributor.');
  if(req.query.offerId){const offer=(await db.query('SELECT id,company_id,product_id FROM marketplace_offers WHERE id=$1',[v.uuid(req.query.offerId)])).rows[0];if(!offer||offer.company_id!==vendor?.id||offer.product_id!==product?.id)throw s.conflict('This marketplace offer is no longer available.');}
- return {categories:await filterCategories(db),product,vendor,profile:(await db.query('SELECT phone FROM customer_profiles WHERE user_id=$1',[user.id])).rows[0],submissionKey:randomUUID()};
+ // Cards show only real, currently published catalogue definitions that have at
+ // least one published seller offer. Image URLs are supplied by those definitions.
+ const discoverableProducts=(await db.query(`SELECT p.id,p.category_id,p.subcategory_id,p.name,p.brand,p.model,p.description,p.image_urls,p.kind,p.category_name,count(o.id)::int AS offer_count
+   FROM marketplace_products p JOIN marketplace_offers o ON o.product_id=p.id
+   GROUP BY p.id,p.category_id,p.subcategory_id,p.name,p.brand,p.model,p.description,p.image_urls,p.kind,p.category_name,p.updated_at
+   ORDER BY p.updated_at DESC,p.id LIMIT 12`)).rows;
+ return {categories:await filterCategories(db),product,vendor,discoverableProducts,profile:(await db.query('SELECT phone FROM customer_profiles WHERE user_id=$1',[user.id])).rows[0],submissionKey:randomUUID()};
 }));});
 purchaseCustomer.post('/enquiry-matches',async(req,res)=>{v.body(req.body,['enquiry','page','companyId'],['enquiry','page']);const data=input.enquiry(req.body.enquiry,true),companyId=req.body.companyId?v.uuid(req.body.companyId):null;const page=Number(req.body.page);if(!Number.isSafeInteger(page)||page<1||page>10000)throw s.conflict('Invalid page.');res.json(await own(req,db=>s.matching(db,data,page,companyId)));});
 purchaseCustomer.post('/enquiries',async(req,res)=>{

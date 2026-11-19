@@ -5,19 +5,19 @@ import vm from 'node:vm';
 
 const source=await readFile(new URL('../src/purchase.js',import.meta.url),'utf8');
 
-function enquiry(guided='home'){
+function enquiry(guided='home',companyId=''){
  const listeners=[];
  const account={
   user:{id:'customer-test',name:'Test Customer',email:'customer@example.invalid'},
   session:{permissions:[]},
-  resource(_path,_url,render){return render({product:null,vendor:null,discoverableProducts:[],categories:[],profile:null,submissionKey:'fixture-only'});},
+  resource(_path,url,render){const company=new URLSearchParams(url.split('?')[1]||'').get('companyId');return render({product:null,vendor:company?{id:company,name:'[TEST] Selected distributor'}:null,discoverableProducts:[],categories:[],profile:null,submissionKey:'fixture-only'});},
   field:(label,name,type,value,extra)=>`<label>${label}<input type="${type}" name="${name}" value="${value}" ${extra}></label>`,
   feedback:()=>'',
  };
  const context={
   window:{addEventListener(){}},
   document:{addEventListener:(name,handler)=>listeners.push([name,handler])},
-  location:{hash:`#/customer/enquiry/new?guided=${guided}`},
+  location:{hash:`#/customer/enquiry/new?guided=${guided}${companyId?'&companyId='+companyId:''}`},
   URLSearchParams,
   Account:account,
   CompanyLocation:{enquiryFields:()=>'<input name="state"><input name="district">',localityField:()=>'<input name="locality">'},
@@ -44,4 +44,11 @@ test('generic Help me choose uses advice intent and leaves service optional',()=
  assert.match(html,/name="helpMeChoose" value="true"/);
  assert.match(html,/name="service"><option value="" selected>No additional service requirement<\/option>/);
  assert.match(html,/name="projectType">[\s\S]*?<option value="advice" selected>/);
+});
+
+test('company profile context reaches the direct-recipient quotation form',()=>{
+ const id='821518ce-91b6-4aa5-a7ff-7ca5bb751c90',html=enquiry('1',id);
+ assert.match(html,/Requesting a quotation from <strong>\[TEST\] Selected distributor<\/strong>/);
+ assert.match(html,new RegExp(`name="targetCompanyId" value="${id}"`));
+ assert.match(html,/name="mode"><option value="direct" selected>This distributor only<\/option>/);
 });

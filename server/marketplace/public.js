@@ -77,7 +77,7 @@ discovery.get('/vendors/:id',async(req,res)=>{
       const b=new Bindings(),match=areaMatch(b,{state:input.normalize(area.state),district:input.normalize(area.district),pin:area.pin,locality:input.normalize(area.locality)},'v.id',b.add([area.label])+'::text[]');
       if((await db.query(`SELECT 1 FROM marketplace_vendors v WHERE v.id=${b.add(id)} AND ${match}`,b.values)).rowCount){verified=true;break;}
     }
-    const quotationCoverage={verified,message:verified?'Installation coverage will be checked before your request is sent.':'Quotation requests are temporarily unavailable while this company confirms its service locations. You can still view its published information.'};
+    const quotationCoverage={verified,message:verified?'Installation coverage will be checked before your request is sent.':'This company has not confirmed verified service coverage yet. Enter your installation location to check eligibility; a request is sent only if the match is verified.'};
     return {vendor:publicBrand(result.rows[0]),areas:areas.rows,quotationCoverage,offers,categories:await filterCategories(db)};
   }));
 });

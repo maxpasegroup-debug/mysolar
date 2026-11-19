@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const source=await readFile(new URL('../src/purchase.js',import.meta.url),'utf8');
 
-function enquiry(guided='home',companyId=''){
+function enquiry(guided='home',companyId='',extra=''){
  const listeners=[];
  const account={
   user:{id:'customer-test',name:'Test Customer',email:'customer@example.invalid'},
@@ -17,7 +17,7 @@ function enquiry(guided='home',companyId=''){
  const context={
   window:{addEventListener(){}},
   document:{addEventListener:(name,handler)=>listeners.push([name,handler])},
-  location:{hash:`#/customer/enquiry/new?guided=${guided}${companyId?'&companyId='+companyId:''}`},
+  location:{hash:`#/customer/enquiry/new?guided=${guided}${companyId?'&companyId='+companyId:''}${extra?'&'+extra:''}`},
   URLSearchParams,
   Account:account,
   CompanyLocation:{enquiryFields:()=>'<input name="state"><input name="district">',localityField:()=>'<input name="locality">'},
@@ -51,4 +51,13 @@ test('company profile context reaches the direct-recipient quotation form',()=>{
  assert.match(html,/Requesting a quotation from <strong>\[TEST\] Selected distributor<\/strong>/);
  assert.match(html,new RegExp(`name="targetCompanyId" value="${id}"`));
  assert.match(html,/name="mode"><option value="direct" selected>This distributor only<\/option>/);
+});
+
+test('the request restores recognized service and project choices after profile navigation',()=>{
+ const html=enquiry('home','','service=maintenance&projectType=commercial');
+ assert.match(html,/<option value="maintenance" selected>Maintenance<\/option>/);
+ assert.match(html,/<option value="commercial" selected>My business or organization<\/option>/);
+ const invalid=enquiry('home','','service=unknown&projectType=unknown');
+ assert.match(invalid,/name="service"><option value="" selected>/);
+ assert.match(invalid,/<option value="rooftop_home" selected>My home<\/option>/);
 });

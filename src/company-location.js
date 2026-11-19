@@ -26,19 +26,20 @@ window.CompanyLocation=(()=>{
   const state=find(Object.keys(IndiaGeography),profile.state),district=find(IndiaGeography[state]||[],profile.district);
   return `<div data-enquiry-location>${searchable('State / Union territory','state',state)}<div data-enquiry-district>${searchable('District','district',district,!state)}</div></div>`;
  }
- function localityField(){return '<label>Reviewed installation locality *<select name="locality" required disabled autocomplete="off" data-reviewed-locality><option value="">Choose State, District and PIN first</option></select><small role="status" aria-live="polite" data-locality-notice>Only independently reviewed locality names can be selected.</small></label>';}
+ function localityField(initial=''){return `<label>Reviewed installation locality *<select name="locality" required disabled autocomplete="off" data-reviewed-locality data-initial-locality="${e(initial)}"><option value="">Choose State, District and PIN first</option></select><small role="status" aria-live="polite" data-locality-notice>Only independently reviewed locality names can be selected.</small></label>`;}
  let localityRequest=0;
  function refreshLocalities(form){
   const select=form.querySelector('[data-reviewed-locality]');if(!select)return;
   const state=form.elements.state?.value||'',district=form.elements.district?.value||'',pin=form.elements.pin?.value||'',tuple=JSON.stringify([state,district,pin]);
   if(form.dataset.localityTuple===tuple)return;form.dataset.localityTuple=tuple;
   const ready=state&&district&&/^[1-9][0-9]{5}$/.test(pin),request=String(++localityRequest),notice=form.querySelector('[data-locality-notice]');
+  const initial=ready?select.dataset.initialLocality||'':'';delete select.dataset.initialLocality;
   form.dataset.localityRequest=request;select.innerHTML='<option value="">'+(ready?'Choose a reviewed locality':'Choose State, District and PIN first')+'</option>';select.disabled=!ready;select.dispatchEvent(new Event('input',{bubbles:true}));
   if(!ready){notice.textContent='Select the installation State, District and six-digit PIN.';return;}
   notice.textContent='Loading reviewed localities…';
   void Account.api('/public/locations/'+encodeURIComponent(pin)+'/localities?'+new URLSearchParams({state,district})).then(data=>{
    if(!form.isConnected||form.dataset.localityRequest!==request)return;
-   select.innerHTML='<option value="">Choose a reviewed locality</option>'+data.items.map(item=>`<option value="${e(item.name)}">${e(item.name)}</option>`).join('');notice.textContent=data.notice;
+   select.innerHTML='<option value="">Choose a reviewed locality</option>'+data.items.map(item=>`<option value="${e(item.name)}">${e(item.name)}</option>`).join('');if(data.items.some(item=>item.name===initial))select.value=initial;notice.textContent=data.notice;
   }).catch(()=>{if(form.isConnected&&form.dataset.localityRequest===request)notice.textContent='Reviewed locations could not be loaded. Try the PIN again or contact support. No location is assumed.';});
  }
  document.addEventListener('input',event=>{const form=event.target.closest('#purchase-enquiry');if(form&&(['state','district','pin'].includes(event.target.name)||event.target.matches('[role="combobox"]')))refreshLocalities(form);});

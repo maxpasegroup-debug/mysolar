@@ -36,7 +36,11 @@ async function locationCandidates(db,data){
  // This is an explicitly non-eligible fallback. It groups only published companies
  // that declare some coverage in the requested district; it never claims they serve
  // the selected PIN/locality, offer the requested product, or are physically nearby.
- const b=new Bindings(),where=[areaMatch(b,{state:data.location.state,district:data.location.district,pin:'',locality:'',area:''})];
+ // This is a discovery hint, not an eligibility decision: using areaMatch here
+ // would discard every named-locality area because it requires the customer's
+ // exact PIN and locality. Show district declarations without claiming a match.
+ const b=new Bindings(),state=b.add(data.location.state),district=b.add(data.location.district);
+ const where=[`EXISTS(SELECT 1 FROM company_service_areas a WHERE a.company_id=v.id AND a.state_key=${state} AND (a.district_key=${district} OR (a.scope='state' AND a.district_key='')))`];
  const result=await paged(db,'v.id,v.name,v.city,v.service_areas','FROM marketplace_vendors v',where.join(' AND '),b,1,'v.name,v.id',6);
  return {mode:'location_list',coordinatesVerified:false,nearbyRadiusKm:25,total:result.total,items:result.items};
 }

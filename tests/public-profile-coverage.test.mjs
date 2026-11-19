@@ -11,4 +11,8 @@ test('public storefront keeps the company request path open but hides unverified
  const html=ctx.window.Experience.storefront('/storefront/'+id);
  assert.match(html,/Published business/);assert.match(html,/has not confirmed verified service coverage/);assert.match(html,/customer\/enquiry\/new\?companyId=821518ce-91b6-4aa5-a7ff-7ca5bb751c90/);assert.doesNotMatch(html,/OFFER REQUEST/);assert.match(html,/OFFER INFORMATION/);
  data.quotationCoverage.verified=true;assert.match(ctx.window.Experience.storefront('/storefront/'+id),/customer\/enquiry\/new/);
+ ctx.location.hash='#/storefront/'+id+'?productId=123&state=Kerala&district=Kannur&pin=670307&locality=Payyanur&guided=1&service=maintenance&projectType=advice&unrelated=ignored';
+ const contextHtml=ctx.window.Experience.storefront('/storefront/'+id);
+ assert.match(contextHtml,/customer\/enquiry\/new\?companyId=821518ce-91b6-4aa5-a7ff-7ca5bb751c90&productId=123&state=Kerala&district=Kannur&pin=670307&locality=Payyanur&guided=1&service=maintenance&projectType=advice/);
+ assert.doesNotMatch(contextHtml,/unrelated=ignored/);
 });

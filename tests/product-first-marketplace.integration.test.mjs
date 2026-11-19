@@ -16,4 +16,12 @@ test('product-first quotation discovery uses published facts and the final routi
  const help={...enquiry,title:'[TEST] Help choosing request',requestedItem:'Help me choose a solar solution',categoryId:'',productId:'',offerId:'',projectType:'advice',service:'',helpMeChoose:true,mode:'direct'};
  const helpMatches=await customer.request('/customer/enquiry-matches','POST',{enquiry:help,page:1,companyId:companyA});assert.equal(helpMatches.status,200,JSON.stringify(helpMatches.data));assert.deepEqual(helpMatches.data.items.map(item=>item.id),[companyA],'explicit guidance does not require a published product or an energy-consultation service declaration');
  const helpSent=await customer.request('/customer/enquiries','POST',{...help,companyIds:[companyA],submissionKey:randomUUID()});assert.equal(helpSent.status,201,JSON.stringify(helpSent.data));assert.equal((await customer.request('/customer/enquiry-matches','POST',{enquiry:{...help,helpMeChoose:false},page:1,companyId:companyA})).status,400,'generic routing requires the explicit Help me choose choice');
+ // A locality-only declaration is useful for a district discovery hint even
+ // when it does not cover the requested service; it must not make it eligible.
+ await db.query(`UPDATE company_service_areas SET scope='locality',locality='Kochi',locality_key='kochi',locality_reference_id=(SELECT id FROM postal_localities WHERE pin='682001' AND locality_key='kochi') WHERE company_id=$1`,[companyA]);
+ const localityOnly=await customer.request('/customer/enquiry-matches','POST',{enquiry:{...unsupported,locality:'Kochi'},page:1});
+ assert.equal(localityOnly.status,200,JSON.stringify(localityOnly.data));assert.equal(localityOnly.data.total,0);
+ assert.ok(localityOnly.data.nearby.items.some(item=>item.id===companyA),'a locality-only business should appear in the clearly non-eligible district list');
+ const stillRejected=await customer.request('/customer/enquiries','POST',{...unsupported,locality:'Kochi',companyIds:[companyA],submissionKey:randomUUID()});
+ assert.equal(stillRejected.status,409,'district discovery must never bypass service or coverage checks when sending');
 });

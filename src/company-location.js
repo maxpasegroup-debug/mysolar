@@ -26,30 +26,35 @@ window.CompanyLocation=(()=>{
   const state=find(Object.keys(IndiaGeography),profile.state),district=find(IndiaGeography[state]||[],profile.district);
   return `<div data-enquiry-location>${searchable('State / Union territory','state',state)}<div data-enquiry-district>${searchable('District','district',district,!state)}</div></div>`;
  }
- function localityField(initial=''){return `<label>Reviewed installation locality *<select name="locality" required disabled autocomplete="off" data-reviewed-locality data-initial-locality="${e(initial)}"><option value="">Choose State, District and PIN first</option></select><small role="status" aria-live="polite" data-locality-notice>Only independently reviewed locality names can be selected.</small></label>`;}
+ function localityField(initial=''){return `<div data-location-choice="locality" data-reviewed-locality data-initial-locality="${e(initial)}"><input type="hidden" name="locality" value=""><label for="solar-choice-locality">Installation locality *</label><div class="location-combobox"><input id="solar-choice-locality" type="search" inputmode="search" enterkeyhint="search" role="combobox" aria-haspopup="listbox" aria-autocomplete="list" aria-expanded="false" aria-controls="solar-choice-locality-list" aria-describedby="solar-locality-notice" required disabled autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Choose State, District and PIN first"><span aria-hidden="true">&#9662;</span><div id="solar-choice-locality-list" role="listbox" aria-label="Installation locality" hidden></div></div><small id="solar-locality-notice" role="status" aria-live="polite" data-locality-notice>Choose State, District and PIN first.</small><small data-location-results role="status" aria-live="polite"></small></div>`;}
  let localityRequest=0;
  function refreshLocalities(form){
-  const select=form.querySelector('[data-reviewed-locality]');if(!select)return;
+  const choice=form.querySelector('[data-reviewed-locality]');if(!choice)return;
+  const input=choice.querySelector('[role="combobox"]'),saved=choice.querySelector('[type="hidden"]');
   const state=form.elements.state?.value||'',district=form.elements.district?.value||'',pin=form.elements.pin?.value||'',tuple=JSON.stringify([state,district,pin]);
   if(form.dataset.localityTuple===tuple)return;form.dataset.localityTuple=tuple;
   const ready=state&&district&&/^[1-9][0-9]{5}$/.test(pin),request=String(++localityRequest),notice=form.querySelector('[data-locality-notice]');
-  const initial=ready?select.dataset.initialLocality||'':'';delete select.dataset.initialLocality;
-  form.dataset.localityRequest=request;select.innerHTML='<option value="">'+(ready?'Choose a reviewed locality':'Choose State, District and PIN first')+'</option>';select.disabled=!ready;select.dispatchEvent(new Event('input',{bubbles:true}));
+  const initial=ready?choice.dataset.initialLocality||'':'';delete choice.dataset.initialLocality;
+  form.dataset.localityRequest=request;choice.localityOptions=[];saved.value='';input.value='';input.setCustomValidity(ready?'Checking your location. Please wait.':'');input.disabled=!ready;input.placeholder=ready?'Loading localities...':'Choose State, District and PIN first';close(choice);saved.dispatchEvent(new Event('input',{bubbles:true}));
   if(!ready){notice.textContent='Select the installation State, District and six-digit PIN.';return;}
-  notice.textContent='Loading reviewed localities…';
+  notice.textContent='Checking localities...';
   void Account.api('/public/locations/'+encodeURIComponent(pin)+'/localities?'+new URLSearchParams({state,district})).then(data=>{
    if(!form.isConnected||form.dataset.localityRequest!==request)return;
-   select.innerHTML='<option value="">Choose a reviewed locality</option>'+data.items.map(item=>`<option value="${e(item.name)}">${e(item.name)}</option>`).join('');if(data.items.some(item=>item.name===initial))select.value=initial;notice.textContent=data.notice;
-  }).catch(()=>{if(form.isConnected&&form.dataset.localityRequest===request)notice.textContent='Reviewed locations could not be loaded. Try the PIN again or contact support. No location is assumed.';});
+   choice.localityOptions=(Array.isArray(data.items)?data.items:[]).map(item=>item.name).filter(name=>typeof name==='string'&&name.trim());
+   input.disabled=false;input.placeholder='Type or select your locality';
+   if(choice.localityOptions.includes(initial)){saved.value=initial;input.value=initial;}
+   input.setCustomValidity(input.value&&!saved.value?'Choose a location from the dropdown.':'');
+   notice.textContent=choice.localityOptions.length?'Type and choose your installation locality from the list.':'We cannot verify a locality for this PIN yet. Please check the location or contact support.';
+  }).catch(()=>{if(form.isConnected&&form.dataset.localityRequest===request){input.disabled=false;input.placeholder='Type your locality';input.setCustomValidity(input.value?'Choose a location from the dropdown.':'');notice.textContent='We could not load localities. Check your connection or contact support.';}});
  }
  document.addEventListener('input',event=>{const form=event.target.closest('#purchase-enquiry');if(form&&(['state','district','pin'].includes(event.target.name)||event.target.matches('[role="combobox"]')))refreshLocalities(form);});
  document.addEventListener('change',event=>{const form=event.target.closest('#purchase-enquiry');if(form&&['state','district','pin'].includes(event.target.name))refreshLocalities(form);});
- const choiceFor=target=>target.closest('[data-enquiry-location]')&&target.closest('[data-location-choice]');
+ const choiceFor=target=>target.closest('#purchase-enquiry')&&target.closest('[data-location-choice]');
  function close(choice){const input=choice.querySelector('[role="combobox"]');input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');choice.querySelector('[role="listbox"]').hidden=true;}
  function resetDistrict(host){host.querySelector('[data-enquiry-district]').innerHTML=searchable('District','district','',!host.querySelector('[name="state"]').value);}
  function open(choice,filter=false){
   const input=choice.querySelector('[role="combobox"]');if(input.disabled)return;
-  const host=choice.closest('[data-enquiry-location]'),name=choice.dataset.locationChoice,all=name==='state'?Object.keys(IndiaGeography):(IndiaGeography[host.querySelector('[name="state"]').value]||[]);
+  const host=choice.closest('[data-enquiry-location]'),name=choice.dataset.locationChoice,all=name==='locality'?(choice.localityOptions||[]):name==='state'?Object.keys(IndiaGeography):(IndiaGeography[host.querySelector('[name="state"]').value]||[]);
   const matches=all.filter(item=>!filter||item.toLowerCase().includes(input.value.trim().toLowerCase())),list=choice.querySelector('[role="listbox"]'),saved=choice.querySelector('[type="hidden"]').value;
   list.innerHTML=matches.map((item,index)=>`<div role="option" id="${input.id}-option-${index}" data-location-option="${e(item)}" aria-selected="${item===saved?'true':'false'}">${e(item)}</div>`).join('')||'<div class="location-no-results">No matches. Try another search.</div>';
   list.hidden=false;input.setAttribute('aria-expanded','true');input.removeAttribute('aria-activedescendant');
@@ -65,12 +70,12 @@ window.CompanyLocation=(()=>{
  document.addEventListener('input',event=>{
   const input=event.target,choice=choiceFor(input);if(!choice||!input.matches('[role="combobox"]'))return;
   const saved=choice.querySelector('[type="hidden"]');saved.value='';input.setCustomValidity('Choose a location from the dropdown.');
-  if(saved.name==='state')resetDistrict(choice.closest('[data-enquiry-location]'));open(choice,true);
+  if(saved.name==='state')resetDistrict(choice.closest('[data-enquiry-location]'));saved.dispatchEvent(new Event('input',{bubbles:true}));open(choice,true);
  });
  document.addEventListener('mousedown',event=>{if(event.target.closest('[data-location-option]'))event.preventDefault();});
  document.addEventListener('click',event=>{
   const choice=choiceFor(event.target),option=event.target.closest('[data-location-option]');
-  document.querySelectorAll('[data-enquiry-location] [data-location-choice]').forEach(item=>{if(item!==choice)close(item);});
+  document.querySelectorAll('#purchase-enquiry [data-location-choice]').forEach(item=>{if(item!==choice)close(item);});
   if(option&&choice)choose(choice,option.dataset.locationOption);else if(choice&&event.target.matches('[role="combobox"]'))open(choice,!choice.querySelector('[type="hidden"]').value);
  });
  document.addEventListener('keydown',event=>{

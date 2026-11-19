@@ -34,13 +34,16 @@ window.CompanyLocation=(()=>{
   input.setCustomValidity(choice.localityPending?'Checking your location. Please wait.':input.value&&!saved.value?'Choose a verified locality from the list.':'');
   if(saved.value!==previous)saved.dispatchEvent(new Event('input',{bubbles:true}));
  }
- let localityRequest=0;
+ let localityRequest=0,localityInteraction=0;
+ // A slow lookup must not open a list over another control the customer chose.
+ document.addEventListener('pointerdown',()=>{localityInteraction++;},true);
+ document.addEventListener('keydown',()=>{localityInteraction++;},true);
  function refreshLocalities(form){
   const choice=form.querySelector('[data-reviewed-locality]');if(!choice)return;
   const input=choice.querySelector('[role="combobox"]'),saved=choice.querySelector('[type="hidden"]');
   const state=form.elements.state?.value||'',district=form.elements.district?.value||'',pin=form.elements.pin?.value||'',tuple=JSON.stringify([state,district,pin]);
   if(form.dataset.localityTuple===tuple)return;form.dataset.localityTuple=tuple;
-  const ready=state&&district&&/^[1-9][0-9]{5}$/.test(pin),request=String(++localityRequest),notice=form.querySelector('[data-locality-notice]');
+  const ready=state&&district&&/^[1-9][0-9]{5}$/.test(pin),request=String(++localityRequest),notice=form.querySelector('[data-locality-notice]'),interaction=localityInteraction;
   const initial=ready?choice.dataset.initialLocality||'':'';delete choice.dataset.initialLocality;
   form.dataset.localityRequest=request;choice.localityOptions=[];choice.localityPending=Boolean(ready);saved.value='';input.value='';input.setCustomValidity(ready?'Checking your location. Please wait.':'');input.disabled=!ready;input.placeholder=ready?'Loading localities...':'Choose State, District and PIN first';close(choice);saved.dispatchEvent(new Event('input',{bubbles:true}));
   if(!ready){notice.textContent='Select the installation State, District and six-digit PIN.';return;}
@@ -52,6 +55,10 @@ window.CompanyLocation=(()=>{
    if(!input.value&&initial&&choice.localityOptions.filter(name=>localityKey(name)===localityKey(initial)).length===1)input.value=initial;
    syncTypedLocality(choice);
    notice.textContent=choice.localityOptions.length?'Type your installation locality or choose it from the list.':'We cannot verify a locality for this PIN yet. Please check the location or contact support.';
+   // Show the verified matches without moving focus or opening the mobile keyboard.
+   // If the customer is already searching the list, refresh it with the new results.
+   if(document.activeElement===input&&input.getAttribute('aria-expanded')==='true')open(choice,true);
+   else if(choice.localityOptions.length&&!input.value&&document.activeElement===form.elements.pin&&localityInteraction===interaction)open(choice);
   }).catch(()=>{if(form.isConnected&&form.dataset.localityRequest===request){choice.localityPending=false;input.disabled=false;input.placeholder='Type your locality';syncTypedLocality(choice);notice.textContent='We could not load localities. Check your connection or contact support.';}});
  }
  document.addEventListener('input',event=>{const form=event.target.closest('#purchase-enquiry');if(form&&(['state','district','pin'].includes(event.target.name)||event.target.matches('[role="combobox"]')))refreshLocalities(form);});

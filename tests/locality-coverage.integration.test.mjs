@@ -25,6 +25,7 @@ test('reviewed locality coverage never widens to the shared postal area',{skip:!
  await db.query('UPDATE company_onboarding SET profile_saved_at=now(),brand_saved_at=now(),business_saved_at=now() WHERE company_id=ANY($1::uuid[])',[[companyA,companyB]]);
  const revision=async id=>(await db.query('SELECT revision FROM companies WHERE id=$1',[id])).rows[0].revision;
  const declaration=name=>({scope:'locality',label:name,state:'Kerala',district:'Kannur',pin:'670307',locality:name});
+ const districtDeclaration={scope:'district',label:'[TEST] Explicit whole Kannur',state:'Kerala',district:'Kannur',pin:'',locality:'',confirmEntireDistrict:true};
  const publish=async id=>{for(const action of ['approve_marketplace','publish'])await expect(operator.request('/platform/companies/'+id+'/actions','POST',{revision:await revision(id),action,reason:'[TEST] Independent explicit coverage review'}),200);};
  const save=async(client,id,areas)=>{await expect(client.request('/companies/current/service-areas','PUT',{revision:await revision(id),areas}),200);await publish(id);};
  const match=async(overrides={},id=companyA)=>expect(customer.request('/customer/enquiry-matches','POST',{enquiry:{...payload,...overrides},page:1,...(id?{companyId:id}:{})}),200);
@@ -35,38 +36,48 @@ test('reviewed locality coverage never widens to the shared postal area',{skip:!
   assert.equal((await match()).total,0);await expect(submit(),409);assert.deepEqual((await db.query('SELECT id FROM company_service_areas WHERE company_id=$1',[companyA])).rows,before);
  });
  await save(a,companyA,[declaration('[TEST] Harbour'),declaration('[TEST] Riverside')]);await save(b,companyB,[declaration('[TEST] Hillside')]);
- await t.test('two localities sharing one PIN are isolated across discovery, preview and final routing',async()=>{
-  assert.deepEqual((await match({},null)).items.map(v=>v.id),[companyA]);assert.deepEqual((await match({locality:'[TEST] Hillside'},null)).items.map(v=>v.id),[companyB]);
+ await t.test('state-only discovery shows declarations; district search excludes locality-only coverage',async()=>{
+  const search=async fields=>expect(customer.request('/public/vendors?'+new URLSearchParams({search:'[TEST] Locality Solar',...fields})),200);
+  const declared=await search({state:'Kerala'});assert.equal(declared.locationMatch,'declared_only');assert.deepEqual(declared.items.map(v=>v.id),[companyA]);
+  for(const fields of [{state:'Kerala',district:'Kannur'},{state:'Kerala',district:'Kannur',area:'[TEST] Harbour'}])assert.equal((await search(fields)).total,0);
+  assert.equal((await search({state:'Kerala',district:'Kozhikode'})).total,0);
+  assert.equal((await search({state:'Kerala',district:'Kannur',pin:'670307',area:'[TEST] Hillside'})).total,0);
+  assert.equal((await match({locality:'[TEST] Hillside'})).total,0);
+  await expect(submit({locality:'[TEST] Hillside'}),409);
+ });
+ await t.test('reviewed localities sharing one PIN do not become district coverage',async()=>{
+  assert.equal((await match({},null)).total,0);assert.equal((await match({locality:'[TEST] Hillside'},null)).total,0);
   assert.equal((await match({locality:'[TEST] Hillside'})).total,0);await expect(submit({locality:'[TEST] Hillside'}),409);
-  assert.equal((await match({locality:'[TEST] Riverside'})).total,1);
+  assert.equal((await match({locality:'[TEST] Riverside'})).total,0);
   const q=new URLSearchParams({state:'Kerala',district:'Kannur',pin:'670307',area:'[TEST] Harbour'});
-  const publicMatches=await expect(customer.request('/public/vendors?'+q),200);assert.deepEqual(publicMatches.items.map(v=>v.id),[companyA]);
-  assert.equal((await match({locality:'  [TEST]   HARBOUR  '})).total,1);
+  const publicMatches=await expect(customer.request('/public/vendors?'+q),200);assert.equal(publicMatches.total,0);
+  assert.equal((await match({locality:'  [TEST]   HARBOUR  '})).total,0);
   assert.equal((await match({locality:''})).total,0);await expect(submit({locality:''}),409);
  });
- await t.test('postal/region mismatches, unreviewed locality and unsafe scope combinations fail closed',async()=>{
+ await t.test('locality-only companies remain ineligible and unsafe coverage saves fail closed',async()=>{
   for(const fields of [{pin:'670308'},{pin:'999999'},{district:'Ernakulam'},{locality:'Not reviewed'}]){assert.equal((await match(fields)).total,0);await expect(submit(fields),409);}
   await expect(customer.request('/customer/enquiry-matches','POST',{enquiry:{...payload,state:'Tamil Nadu'},page:1}),400);
   for(const bad of [{...declaration('[TEST] Harbour'),scope:'pin'},{...declaration('[TEST] Harbour'),scope:'district'},{...declaration('Not reviewed')},{...declaration('[TEST] Harbour'),district:'Ernakulam'}])await expect(a.request('/companies/current/service-areas','PUT',{revision:await revision(companyA),areas:[bad]}),400);
  });
  await t.test('whole district and exact PIN remain explicit broad scopes, never locality fallbacks',async()=>{
   const samePublic=async()=>{const q=new URLSearchParams({state:payload.state,district:payload.district,pin:payload.pin,area:payload.locality});assert.deepEqual((await expect(customer.request('/public/vendors?'+q),200)).items.map(v=>v.id).sort(),(await match({},null)).items.map(v=>v.id).sort());};
-  await save(b,companyB,[{scope:'district',label:'[TEST] Explicit whole Kannur',state:'Kerala',district:'Kannur',pin:'',locality:''}]);
+  await save(b,companyB,[districtDeclaration]);
   await samePublic();
   assert.equal((await match({},companyB)).total,1);assert.equal((await match({pin:'670308'},companyB)).total,1);
   await save(b,companyB,[{scope:'pin',label:'[TEST] Explicit whole PIN',state:'Kerala',district:'Kannur',pin:'670307',locality:''}]);
   await samePublic();
-  assert.equal((await match({locality:'[TEST] Hillside'},companyB)).total,1);assert.equal((await match({pin:'670308'},companyB)).total,0);
+  assert.equal((await match({locality:'[TEST] Hillside'},companyB)).total,0);assert.equal((await match({pin:'670308'},companyB)).total,0);
   await save(b,companyB,[declaration('[TEST] Hillside')]);
  });
- await t.test('unpublication and withdrawn references invalidate even an earlier recipient review',async()=>{
-  assert.equal((await match()).total,1);await db.query('UPDATE companies SET storefront_published=false WHERE id=$1',[companyA]);assert.equal((await match()).total,0);await expect(submit(),409);await db.query('UPDATE companies SET storefront_published=true WHERE id=$1',[companyA]);
-  await expect(operator.request('/platform/localities/import','POST',{...references,rows:[{pin:'670307',name:'[TEST] Harbour',active:false}]}),200);assert.equal((await match()).total,0);await expect(submit(),409);await expect(operator.request('/platform/localities/import','POST',{...references,rows:[references.rows[0]]}),200);
+ await t.test('unpublication invalidates review while withdrawn postal references do not cancel district coverage',async()=>{
+  await save(a,companyA,[districtDeclaration]);
+  assert.equal((await match()).total,1);await db.query('UPDATE companies SET storefront_published=false WHERE id=$1',[companyA]);assert.equal((await match()).total,0);await expect(submit(),409);assert.equal((await expect(customer.request('/public/vendors?'+new URLSearchParams({search:'[TEST] Locality Solar',state:'Kerala',district:'Kannur'})),200)).total,0);await db.query('UPDATE companies SET storefront_published=true WHERE id=$1',[companyA]);
+  await expect(operator.request('/platform/localities/import','POST',{...references,rows:[{pin:'670307',name:'[TEST] Harbour',active:false}]}),200);assert.equal((await match()).total,1);await expect(submit(),201);await expect(operator.request('/platform/localities/import','POST',{...references,rows:[references.rows[0]]}),200);
  });
- await t.test('public profile retains published information with safe missing/inactive reference status',async()=>{
+ await t.test('public profile distinguishes explicit district coverage from narrower locality coverage',async()=>{
   const profile=()=>customer.request('/public/vendors/'+companyA);
   assert.equal((await expect(profile(),200)).quotationCoverage.verified,true);
-  await db.query('UPDATE company_service_areas SET locality_reference_id=NULL WHERE company_id=$1',[companyA]);
+  await save(a,companyA,[declaration('[TEST] Harbour'),declaration('[TEST] Riverside')]);await db.query('UPDATE company_service_areas SET locality_reference_id=NULL WHERE company_id=$1',[companyA]);
   let publicData=await expect(profile(),200);assert.equal(publicData.quotationCoverage.verified,false);assert.equal(publicData.vendor.name,'[TEST] Locality Solar');
   assert.doesNotMatch(JSON.stringify(publicData),/This State, District and PIN combination has no reviewed postal reference/);await expect(submit(),409);
   await save(a,companyA,[declaration('[TEST] Harbour'),declaration('[TEST] Riverside')]);
@@ -76,9 +87,10 @@ test('reviewed locality coverage never widens to the shared postal area',{skip:!
   await db.query("UPDATE postal_localities SET active=false WHERE pin='670307'");
   assert.equal((await expect(profile(),200)).quotationCoverage.verified,false);await expect(submit(),409);
   await db.query("UPDATE postal_localities SET active=true WHERE pin='670307'");
-  assert.equal((await expect(profile(),200)).quotationCoverage.verified,true);
+  assert.equal((await expect(profile(),200)).quotationCoverage.verified,false);
+  await save(a,companyA,[districtDeclaration]);assert.equal((await expect(profile(),200)).quotationCoverage.verified,true);
  });
- await t.test('simultaneous coverage/reference withdrawals serialize with final routing',async()=>{
+ await t.test('coverage withdrawal serializes with final routing; reference changes do not gate district coverage',async()=>{
   const lock=await fx.connection();
   const {eligibleRecipients}=await import('../server/purchase/service.js');
   const {enquiry:validate}=await import('../server/purchase/validation.js');
@@ -98,16 +110,16 @@ test('reviewed locality coverage never widens to the shared postal area',{skip:!
    await lock.query('DELETE FROM company_service_areas WHERE company_id=$1',[companyA]);
    const pending=submit();await blocked();await lock.query('COMMIT');
    await expect(pending,409);
-   await save(a,companyA,[declaration('[TEST] Harbour'),declaration('[TEST] Riverside')]);
+   await save(a,companyA,[districtDeclaration]);
    // Routing wins: the existing HTTP owner coverage change waits for the routing transaction.
    await lock.query('BEGIN');assert.equal((await eligibleRecipients(lock,data())).length,1);
    const changed=a.request('/companies/current/service-areas','PUT',{revision:await revision(companyA),areas:[declaration('[TEST] Riverside')]});
    await blocked();await lock.query('COMMIT');await expect(changed,200);await expect(submit(),409);
-   await save(a,companyA,[declaration('[TEST] Harbour'),declaration('[TEST] Riverside')]);
-   // Reference withdrawal waits for the same final-routing shared reference lock.
+   await save(a,companyA,[districtDeclaration]);
+   // Postal reference withdrawal does not block an unrelated district-only route.
    await lock.query('BEGIN');assert.equal((await eligibleRecipients(lock,data())).length,1);
    const withdrawn=operator.request('/platform/localities/import','POST',{...references,rows:[{...references.rows[0],active:false}]});
-   await blocked();await lock.query('COMMIT');await expect(withdrawn,200);await expect(submit(),409);
+   await expect(withdrawn,200);await lock.query('COMMIT');await expect(submit(),201);
    await expect(operator.request('/platform/localities/import','POST',{...references,rows:[references.rows[0]]}),200);
   }finally{await lock.query('ROLLBACK');await lock.end();}
  });

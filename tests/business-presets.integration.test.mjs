@@ -29,10 +29,10 @@ test('four presets use one tenant-safe resumable company flow', {skip:!process.e
   const created=await owner.request('/companies','POST',{name:'[TEST] '+preset,city:'[TEST] City',email:preset+'@example.invalid',phone:'',businessType:type,businessPreset:preset});assert.equal(created.status,201,JSON.stringify(created.data));
   await owner.session();assert.equal(owner.company.business_preset,preset);assert.equal(owner.company.business_type,type);assert.equal(owner.company.lifecycle,'draft');
   const setup=(await owner.request('/companies/current/setup')).data;assert.equal(setup.profile.business_preset,preset);assert.equal(setup.company.storefront_published,false);assert.equal(setup.onboarding.profile_saved_at,null);
-  assert.equal((await owner.request('/companies/current/operations/dashboard')).data.error.code,'OS_ACTIVATION_REQUIRED');
+  const beforeActivation=await owner.request('/companies/current/operations/dashboard');assert.equal(beforeActivation.status,403);assert.equal(beforeActivation.data.error.code,'OS_SUBSCRIPTION_REQUIRED');
   // Fixture-only independent activation: selecting a preset did not activate it.
   await db.query("UPDATE companies SET lifecycle='active' WHERE id=$1",[owner.company.id]);await owner.session();
-  assert.equal((await owner.request('/companies/current/operations/dashboard')).data.error.code,'OS_ACTIVATION_REQUIRED');
+  const afterActivation=await owner.request('/companies/current/operations/dashboard');assert.equal(afterActivation.status,403);assert.equal(afterActivation.data.error.code,'OS_SUBSCRIPTION_REQUIRED');
   assert.equal(owner.company.business_preset,preset);
   await db.query("UPDATE companies SET lifecycle='draft' WHERE id=$1",[owner.company.id]);await owner.session();
   owners.push(owner);

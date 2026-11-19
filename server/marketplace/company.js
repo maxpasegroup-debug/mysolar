@@ -60,15 +60,28 @@ listings.post('/offers/:id/actions',async(req,res)=>{
   }));
 });
 listings.get('/service-areas',async(req,res)=>res.json(await withCompany(req,'company.setup.read',async(db,ctx)=>{
-  const company=(await db.query('SELECT revision,lifecycle FROM companies WHERE id=$1',[ctx.companyId])).rows[0];const areas=(await db.query('SELECT scope,label,state,district,pin,locality FROM company_service_areas WHERE company_id=$1 ORDER BY label LIMIT 20',[ctx.companyId])).rows;return {company,areas};
+  const company=(await db.query('SELECT revision,lifecycle FROM companies WHERE id=$1',[ctx.companyId])).rows[0];const areas=(await db.query('SELECT id,scope,label,state,district,pin,locality FROM company_service_areas WHERE company_id=$1 ORDER BY label LIMIT 20',[ctx.companyId])).rows;return {company,areas};
 })));
 listings.put('/service-areas',async(req,res)=>{
   const data=input.areas(req.body);
   res.json(await withCompany(req,'service_areas.manage',async(db,ctx)=>{
     const company=(await db.query('SELECT * FROM companies WHERE id=$1',[ctx.companyId])).rows[0];expectRevision(company,data.revision);editable(company);
-    const areas=await reviewedCoverage(db,data.areas);
-    await db.query('DELETE FROM company_service_areas WHERE company_id=$1',[ctx.companyId]);
-    for(const a of areas)await db.query('INSERT INTO company_service_areas(id,company_id,scope,label,state,district,pin,locality,state_key,district_key,locality_key,locality_reference_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',[randomUUID(),ctx.companyId,a.scope,a.label,a.state,a.district,a.pin,a.locality,input.normalize(a.state),input.normalize(a.district),input.normalize(a.locality),a.localityReferenceId]);
+    const saved=(await db.query('SELECT id,scope,label,state,district,pin,locality FROM company_service_areas WHERE company_id=$1 FOR UPDATE',[ctx.companyId])).rows;
+    const byId=new Map(saved.map(row=>[row.id,row])),fields=['scope','label','state','district','pin','locality'],changed=[];
+    for(const area of data.areas){
+      const old=area.id?byId.get(area.id):null;
+      if(area.id&&!old)throw new HttpError(400,'INVALID_COVERAGE','Choose only service areas belonging to your company.');
+      if(!old||fields.some(field=>old[field]!==area[field]))changed.push(area);
+    }
+    if(ctx.role!=='owner'&&changed.some(area=>area.scope==='district'))throw new HttpError(403,'OWNER_REQUIRED','Only the company owner can declare whole-district coverage.');
+    if(changed.some(area=>area.scope==='district'&&!area.confirmEntireDistrict))throw new HttpError(400,'DISTRICT_CONFIRMATION_REQUIRED','Confirm that your company serves the entire district before saving this declaration.');
+    const validated=await reviewedCoverage(db,changed),retained=data.areas.filter(a=>a.id).map(a=>a.id);
+    await db.query('DELETE FROM company_service_areas WHERE company_id=$1 AND NOT (id=ANY($2::uuid[]))',[ctx.companyId,retained]);
+    for(const a of validated){
+      const values=[a.scope,a.label,a.state,a.district,a.pin,a.locality,input.normalize(a.state),input.normalize(a.district),input.normalize(a.locality),a.localityReferenceId];
+      if(a.id)await db.query('UPDATE company_service_areas SET scope=$1,label=$2,state=$3,district=$4,pin=$5,locality=$6,state_key=$7,district_key=$8,locality_key=$9,locality_reference_id=$10 WHERE id=$11 AND company_id=$12',[...values,a.id,ctx.companyId]);
+      else await db.query('INSERT INTO company_service_areas(scope,label,state,district,pin,locality,state_key,district_key,locality_key,locality_reference_id,id,company_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',[...values,randomUUID(),ctx.companyId]);
+    }
     await db.query('UPDATE company_business_profiles SET service_areas=$1,updated_at=now() WHERE company_id=$2',[data.areas.map(a=>a.label),ctx.companyId]);
     await markChanged(db,ctx,company,'company.service_areas_saved');return {message:'Coverage saved. Company publication requires renewed marketplace review.'};
   }));

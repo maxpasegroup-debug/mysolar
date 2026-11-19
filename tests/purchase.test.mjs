@@ -14,6 +14,8 @@ test('enquiry location rejects unknown states, cross-state districts and malform
  for(const fields of [{state:'Unknown'},{state:'Tamil Nadu',district:'Kozhikode'},{district:''},{district:'Unknown'},{pin:'12345'},{pin:'1234567'},{pin:'012345'}])assert.throws(()=>input.enquiry({...enquiry(),...fields}));
  const saved=input.enquiry({...enquiry(),district:'Kozhikode',pin:'673014',locality:'[TEST] town',address:'[TEST] street'});
  assert.deepEqual(saved.location,{state:'kerala',district:'kozhikode',pin:'673014',locality:'[test] town',area:''});assert.equal(saved.locality,'[TEST] town');assert.equal(saved.address,'[TEST] street');
+ const omitted=enquiry();delete omitted.pin;delete omitted.locality;const withoutPostcode=input.enquiry({...omitted,state:' kerala ',district:' ERNAKULAM '});
+ assert.equal(withoutPostcode.state,'Kerala');assert.equal(withoutPostcode.district,'Ernakulam');assert.equal(withoutPostcode.pin,'');assert.equal(withoutPostcode.locality,'');
 });
 
 test('enquiry rules: duplicate recipients, direct fan-out and excessive recipients are rejected',()=>{

@@ -14,7 +14,7 @@ export async function connectedFixture(t,{beforeStart,strangerAccountType='busin
   await db.query("UPDATE company_branding SET description='[TEST] published solar company',public_email='fixture@example.invalid' WHERE company_id=$1",[company]);
   await db.query("UPDATE companies SET marketplace_status='approved',storefront_published=true WHERE id=$1",[company]);
   await db.query("INSERT INTO company_reviews(company_id,actor_user_id,kind,previous_state,new_state,reason,revision) VALUES($1,$2,'marketplace','pending','approved','[TEST] isolated fixture approval',1)",[company,owner.user.id]);
-  await db.query("INSERT INTO company_service_areas(id,company_id,scope,label,state,district,pin,state_key,district_key) VALUES($1,$2,'pin','[TEST] PIN','Kerala','Ernakulam','682001','kerala','ernakulam')",[randomUUID(),company]);
+  await db.query("INSERT INTO company_service_areas(id,company_id,scope,label,state,district,pin,state_key,district_key) VALUES($1,$2,'district','[TEST] District','Kerala','Ernakulam','','kerala','ernakulam')",[randomUUID(),company]);
  }
  await db.query("INSERT INTO catalogue_products(id,category_id,name,unit,schema_revision,created_by,published_by,published_at,status,public_visible) VALUES($1,$2,'[TEST] solar equipment','unit',1,$3,$3,now(),'published',true)",[product,category,a.user.id]);
  for(const [company,owner] of [[companyA,a],[companyB,b]])await db.query("INSERT INTO distributor_offers(id,company_id,product_id,price_mode,price_unit,private_notes,status,published,approved_revision,approved_product_revision,reviewed_by,reviewed_at,created_by) VALUES($1,$2,$3,'request_quote','unit','PRIVATE-OFFER-COST','approved',true,1,1,$4,now(),$4)",[randomUUID(),company,product,owner.user.id]);

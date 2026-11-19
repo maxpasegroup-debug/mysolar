@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { pool,transaction } from '../db/pool.js';
 import * as v from '../validation.js';
 import * as input from './validation.js';
-import { Bindings,areaMatch,hasLocation,productFilter,paged,publishedProduct,filterCategories } from './service.js';
+import { Bindings,areaMatch,districtAreaMatch,directoryAreaMatch,hasLocation,productFilter,paged,publishedProduct,filterCategories } from './service.js';
 import { HttpError } from '../errors.js';
 import { publicBrand } from './presentation.js';
+import '../../src/india-geography.js';
 export const discovery=Router();
 discovery.get('/categories',async(req,res)=>{
   v.body(req.query,['page'],[]);const page=req.query.page===undefined?1:input.integer(Number(req.query.page),'page',1,10000);
@@ -56,13 +57,17 @@ discovery.get('/products/:id',async(req,res)=>{
 });
 discovery.get('/vendors',async(req,res)=>{
   const q=input.query(req.query);
+  if(q.state&&q.district){
+    const state=Object.keys(globalThis.IndiaGeography).find(name=>input.normalize(name)===q.state);
+    if(!state||!globalThis.IndiaGeography[state].some(name=>input.normalize(name)===q.district))throw new HttpError(400,'INVALID_LOCATION','Choose a valid State and its District.');
+  }
   res.json(await transaction(async db=>{
     const bind=new Bindings(),conditions=['true'];
     if(q.search){const value=bind.add(q.search);conditions.push(`(v.name ILIKE '%'||${value}||'%' OR v.description ILIKE '%'||${value}||'%')`);}
-    if(hasLocation(q))conditions.push(areaMatch(bind,q));
+    if(hasLocation(q))conditions.push(directoryAreaMatch(bind,q));
     if(q.service)conditions.push(`${bind.add(q.service)}=ANY(v.services)`);
-    if(q.category||q.brand||q.price||q.kind||q.availability||q.sellers){const offer=['o.company_id=v.id'];if(q.category){const key=bind.add(q.category);offer.push(`(p.category_id=${key} OR p.subcategory_id=${key} OR p.category_id IN (SELECT id FROM catalogue_categories WHERE discovery_category_id=${key} AND EXISTS(SELECT 1 FROM catalogue_categories root WHERE root.id=${key} AND root.active)))`);}if(q.brand)offer.push(`lower(p.brand)=${bind.add(input.normalize(q.brand))}`);if(q.price)offer.push(`o.price_mode=${bind.add(q.price)}`);if(q.availability)offer.push(`o.availability=${bind.add(q.availability)}`);if(q.kind)offer.push(`p.kind=${bind.add(q.kind)}`);if(hasLocation(q))offer.push(areaMatch(bind,q,'v.id','o.coverage_labels'));conditions.push(`EXISTS(SELECT 1 FROM marketplace_offers o JOIN marketplace_products p ON p.id=o.product_id WHERE ${offer.join(' AND ')})`);}
-    const result=await paged(db,`v.*,(SELECT coalesce(json_agg(x),'[]') FROM (SELECT DISTINCT p.category_id AS id,p.category_name AS name FROM marketplace_offers o JOIN marketplace_products p ON p.id=o.product_id WHERE o.company_id=v.id LIMIT 30) x) AS offered_categories`,'FROM marketplace_vendors v',conditions.join(' AND '),bind,q.page,'v.name,v.id');return {...result,items:result.items.map(publicBrand),categories:await filterCategories(db)};
+    if(q.category||q.brand||q.price||q.kind||q.availability||q.sellers){const offer=['o.company_id=v.id'];if(q.category){const key=bind.add(q.category);offer.push(`(p.category_id=${key} OR p.subcategory_id=${key} OR p.category_id IN (SELECT id FROM catalogue_categories WHERE discovery_category_id=${key} AND EXISTS(SELECT 1 FROM catalogue_categories root WHERE root.id=${key} AND root.active)))`);}if(q.brand)offer.push(`lower(p.brand)=${bind.add(input.normalize(q.brand))}`);if(q.price)offer.push(`o.price_mode=${bind.add(q.price)}`);if(q.availability)offer.push(`o.availability=${bind.add(q.availability)}`);if(q.kind)offer.push(`p.kind=${bind.add(q.kind)}`);if(hasLocation(q))offer.push(directoryAreaMatch(bind,q,'v.id','o.coverage_labels'));conditions.push(`EXISTS(SELECT 1 FROM marketplace_offers o JOIN marketplace_products p ON p.id=o.product_id WHERE ${offer.join(' AND ')})`);}
+    const result=await paged(db,`v.*,(SELECT coalesce(json_agg(x),'[]') FROM (SELECT DISTINCT p.category_id AS id,p.category_name AS name FROM marketplace_offers o JOIN marketplace_products p ON p.id=o.product_id WHERE o.company_id=v.id LIMIT 30) x) AS offered_categories`,'FROM marketplace_vendors v',conditions.join(' AND '),bind,q.page,'v.name,v.id');return {...result,items:result.items.map(publicBrand),categories:await filterCategories(db),locationMatch:hasLocation(q)&&!q.pin&&!(q.state&&q.district)?'declared_only':'eligibility_requires_enquiry'};
   }));
 });
 discovery.get('/vendors/:id',async(req,res)=>{
@@ -74,7 +79,7 @@ discovery.get('/vendors/:id',async(req,res)=>{
     // Reuse routing rules for declared areas; never run the owner-save validator on a public read.
     let verified=false;
     for(const area of areas.rows){
-      const b=new Bindings(),match=areaMatch(b,{state:input.normalize(area.state),district:input.normalize(area.district),pin:area.pin,locality:input.normalize(area.locality)},'v.id',b.add([area.label])+'::text[]');
+      const b=new Bindings(),match=districtAreaMatch(b,{state:input.normalize(area.state),district:input.normalize(area.district)},'v.id',b.add([area.label])+'::text[]');
       if((await db.query(`SELECT 1 FROM marketplace_vendors v WHERE v.id=${b.add(id)} AND ${match}`,b.values)).rowCount){verified=true;break;}
     }
     const quotationCoverage={verified,message:verified?'Installation coverage will be checked before your request is sent.':'This company has not confirmed verified service coverage yet. Enter your installation location to check eligibility; a request is sent only if the match is verified.'};

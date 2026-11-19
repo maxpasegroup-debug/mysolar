@@ -14,16 +14,16 @@ function setup(){
  const edit=(key,value)=>{data[key]=value;for(const fn of listeners.input)fn({target:{name:key,closest:()=>form}});};
  return {account,send,recipient,recipients,review,match,edit};
 }
-test('notes, address, contact and quantity edits preserve the reviewed direct distributor',async()=>{
+test('optional installation details preserve the reviewed district recipient',async()=>{
  const ui=setup();await ui.match();assert.equal(ui.send.disabled,false);assert.equal(ui.recipient.checked,true);
- for(const [key,value] of Object.entries({requirements:'Roof details',address:'Fictional street',contactMethod:'email',timeframe:'Next month',quantity:'2',unit:'unit',requestedItem:'Solar consultation'})){ui.edit(key,value);assert.equal(ui.send.disabled,false,key);}
+ for(const [key,value] of Object.entries({requirements:'Roof details',address:'Fictional street',pin:'123456',locality:'Different locality',contactMethod:'email',timeframe:'Next month',quantity:'2',unit:'unit',requestedItem:'Solar consultation'})){ui.edit(key,value);assert.equal(ui.send.disabled,false,key);}
  assert.match(ui.review.innerHTML,/Fixture Solar/);assert.match(ui.review.innerHTML,/Roof details/);
 });
-test('material edits require a fresh review; whitespace/case-only locality edits do not',async()=>{
- for(const [key,value] of Object.entries({state:'Tamil Nadu',district:'Ernakulam',pin:'123456',locality:'Different locality',categoryId:'other-category',service:'maintenance',mode:'matching'})){
-  const ui=setup();await ui.match();ui.edit('locality',' PAYYANUR ');assert.equal(ui.send.disabled,false);ui.edit(key,value);assert.equal(ui.send.disabled,true,key);assert.match(ui.recipients.textContent,/Find eligible distributors/);
+test('district and service edits require a fresh recipient review',async()=>{
+ for(const [key,value] of Object.entries({state:'Tamil Nadu',district:'Ernakulam',categoryId:'other-category',service:'maintenance',mode:'matching'})){
+  const ui=setup();await ui.match();ui.edit(key,value);assert.equal(ui.send.disabled,true,key);assert.match(ui.recipients.textContent,/Find eligible distributors/);
  }
 });
 test('a delayed match response cannot enable sending after a material edit',async()=>{
- const ui=setup();let resolve;ui.account.api=()=>new Promise(r=>{resolve=r;});const matching=ui.match();ui.edit('pin','123456');resolve({total:1,items:[{id:'company',name:'Fixture Solar'}]});await matching;assert.equal(ui.send.disabled,true);assert.match(ui.recipients.textContent,/changed during the check/);
+ const ui=setup();let resolve;ui.account.api=()=>new Promise(r=>{resolve=r;});const matching=ui.match();ui.edit('district','Ernakulam');resolve({total:1,items:[{id:'company',name:'Fixture Solar'}]});await matching;assert.equal(ui.send.disabled,true);assert.match(ui.recipients.textContent,/changed during the check/);
 });

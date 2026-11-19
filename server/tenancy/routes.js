@@ -29,13 +29,16 @@ companies.get('/setup-options',async(req,res)=>{
  res.json({catalogue:setupCatalogue});
 });
 companies.post('/',async(req,res)=>{
-  await limit(req,'company-create',req.session.user_id,5,86400);
+  // Protect the endpoint from repeated malformed requests without spending a
+  // user's daily company-creation allowance on fields they need to correct.
+  await limit(req,'company-create-attempt',req.session.user_id,30,3600);
   const input=v.body(req.body,['name','city','email','phone','businessType','businessPreset','countryCode','state','district','operationKey','workspacePlan','publicListing'],['name','city','email','phone']);
   const workspacePlan=input.workspacePlan===undefined?null:validateSetupPlan(input.workspacePlan);
   const publicListing=input.publicListing===undefined?null:validatePublicListing(input.publicListing);
   const location=companyLocation(input);
   const {businessType,businessPreset}=resolveBusinessPreset(input.businessType,input.businessPreset);
   const name=v.text(input.name,'company name'),city=v.text(input.city,'city'),email=v.email(input.email),phone=v.phone(input.phone);
+  await limit(req,'company-create',req.session.user_id,5,86400);
   const result=await transaction(async db=>{
     const user=await lockedUser(db,req);requireBusiness(user);
     const creation=await prepareCompanyCreation(db,user.id,input.operationKey,{name,city,email,phone,businessType,businessPreset,state:location?.state||'',district:location?.district||'',...(workspacePlan?{workspacePlan}:{}),...(publicListing?{publicListing}:{})}),id=creation.id;

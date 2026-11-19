@@ -19,6 +19,26 @@ export function areaMatch(bind,q,company='v.id',coverage=null){
   return `EXISTS(SELECT 1 FROM company_service_areas a WHERE ${conditions.join(' AND ')})`;
 }
 export const hasLocation=q=>Boolean(q.state||q.district||q.pin||q.area);
+// Quotation routing requires an explicit district-wide declaration. State,
+// PIN and named-locality scopes never imply that wider area is served.
+export function districtAreaMatch(bind,q,company='v.id',coverage=null){
+ const conditions=[`a.company_id=${company}`,"a.scope='district'","a.state_key<>''","a.district_key<>''","a.pin=''","a.locality=''","a.locality_key=''","a.locality_reference_id IS NULL",`a.state_key=${bind.add(q.state)}`,`a.district_key=${bind.add(q.district)}`];
+ if(coverage)conditions.push(`(cardinality(${coverage})=0 OR a.label=ANY(${coverage}))`);
+ return `EXISTS(SELECT 1 FROM company_service_areas a WHERE ${conditions.join(' AND ')})`;
+}
+// Partial directory searches show published declarations, not quotation eligibility.
+// A named-locality declaration cannot establish eligibility without an installation
+// PIN and reviewed locality, but should still be discoverable by state or district.
+export function directoryAreaMatch(bind,q,company='v.id',coverage=null){
+ if(q.state&&q.district)return districtAreaMatch(bind,q,company,coverage);
+ if(q.pin)return areaMatch(bind,q,company,coverage);
+ const conditions=[`a.company_id=${company}`,"a.scope IN ('state','district','pin','locality')","a.state_key<>''"];
+ if(coverage)conditions.push(`(cardinality(${coverage})=0 OR a.label=ANY(${coverage}))`);
+ if(q.state)conditions.push(`a.state_key=${bind.add(q.state)}`);
+ if(q.district){const key=bind.add(q.district);conditions.push(`(a.district_key=${key} OR a.scope='state')`);}
+ if(q.area){const key=bind.add(q.area);conditions.push(`(a.locality_key=${key} OR a.district_key=${key} OR a.state_key=${key} OR a.pin=${key})`);}
+ return `EXISTS(SELECT 1 FROM company_service_areas a WHERE ${conditions.join(' AND ')})`;
+}
 export async function filterCategories(db){return (await db.query('SELECT c.id,c.parent_id,c.name,c.kind,c.slug,c.attribute_schema,c.discovery_key,c.description,c.localized_names,c.localized_descriptions,c.display_order FROM catalogue_categories c WHERE c.active AND (c.parent_id IS NULL OR EXISTS(SELECT 1 FROM catalogue_categories parent WHERE parent.id=c.parent_id AND parent.active)) ORDER BY c.parent_id NULLS FIRST,c.display_order,c.name,c.id LIMIT 200')).rows;}
 export function productFilter(bind,q,{publicOnly=true}={}){
   const conditions=['true'];

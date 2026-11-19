@@ -1,0 +1,42 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {connectedFixture} from './helpers/connected-fixture.mjs';
+
+test('explicit district coverage preserves legacy localities and requires independent review',{skip:!process.env.TEST_DATABASE_URL,timeout:180000},async t=>{
+ const fx=await connectedFixture(t),{db,a,b,customer,companyA,companyB}=fx;
+ const operator=fx.client();await operator.register('district-coverage-reviewer');
+ await db.query("INSERT INTO platform_admin_grants(user_id,reason) VALUES($1,'[TEST] independent district coverage reviewer')",[operator.user.id]);
+ const legacyId=randomUUID();
+ await db.query("INSERT INTO company_service_areas(id,company_id,scope,label,state,district,pin,locality,state_key,district_key,locality_key) VALUES($1,$2,'locality','[TEST] legacy town','Kerala','Kannur','','Payyanur','kerala','kannur','payyanur')",[legacyId,companyA]);
+ const existing=(await a.request('/companies/current/service-areas')).data;
+ const district={scope:'district',label:'[TEST] whole Kannur',state:'Kerala',district:'Kannur',pin:'',locality:'',confirmEntireDistrict:true};
+ const old=existing.areas.find(row=>row.id===legacyId);assert.ok(old);
+ const payload={revision:existing.company.revision,areas:[...existing.areas,district]};
+ assert.equal((await customer.request('/companies/current/service-areas','PUT',payload)).status,409);
+ const foreign=(await b.request('/companies/current/service-areas')).data.areas[0];
+ assert.equal((await a.request('/companies/current/service-areas','PUT',{...payload,areas:[...payload.areas,foreign]})).status,400);
+ assert.equal((await a.request('/companies/current/service-areas','PUT',payload,{'X-CSRF-Token':'wrong'})).status,403);
+ assert.equal((await a.request('/companies/current/service-areas','PUT',{...payload,areas:[...existing.areas,{...district,confirmEntireDistrict:false}]})).status,400);
+ // A non-owner granted the existing management permission still cannot assert whole-district coverage.
+ const staff=fx.client();await staff.register('district-authorized-staff');
+ await db.query("INSERT INTO role_permissions(role_id,permission_id) VALUES('sales','service_areas.manage') ON CONFLICT DO NOTHING");
+ await db.query("INSERT INTO company_memberships(id,company_id,user_id,role_id) VALUES($1,$2,$3,'sales')",[randomUUID(),companyA,staff.user.id]);
+ assert.equal((await staff.request('/companies/select','POST',{companyId:companyA})).status,200);await staff.session();
+ assert.equal((await staff.request('/companies/current/service-areas','PUT',payload)).status,403);
+ const saved=await a.request('/companies/current/service-areas','PUT',payload);assert.equal(saved.status,200,JSON.stringify(saved.data));
+ const retained=(await db.query('SELECT id,pin,locality,locality_reference_id FROM company_service_areas WHERE id=$1 AND company_id=$2',[legacyId,companyA])).rows[0];
+ assert.deepEqual(retained,{id:legacyId,pin:'',locality:'Payyanur',locality_reference_id:null});
+ const state=(await db.query('SELECT revision,marketplace_status,storefront_published FROM companies WHERE id=$1',[companyA])).rows[0];
+ assert.equal(state.marketplace_status,'pending');assert.equal(state.storefront_published,false);
+ assert.equal((await customer.request('/public/vendors/'+companyA)).status,404);
+ const action={revision:state.revision,action:'approve_marketplace',reason:'[TEST] explicit independently reviewed district coverage'};
+ assert.equal((await a.request('/platform/companies/'+companyA+'/actions','POST',action)).status,403);
+ await db.query("UPDATE company_onboarding SET profile_saved_at=now(),brand_saved_at=now(),business_saved_at=now() WHERE company_id=$1",[companyA]);
+ await db.query('UPDATE company_business_profiles SET marketplace_requested=true WHERE company_id=$1',[companyA]);
+ const review=await operator.request('/platform/companies/'+companyA+'/actions','POST',action);assert.equal(review.status,200,JSON.stringify(review.data));
+ const after=(await db.query('SELECT revision,marketplace_status,storefront_published FROM companies WHERE id=$1',[companyA])).rows[0];
+ assert.equal(after.marketplace_status,'approved');assert.equal(after.storefront_published,false);
+ assert.equal((await operator.request('/platform/companies/'+companyA+'/actions','POST',{revision:after.revision,action:'publish',reason:'[TEST] approved district coverage publication'})).status,200);
+ const other=(await db.query('SELECT scope,label FROM company_service_areas WHERE company_id=$1',[companyB])).rows;assert.deepEqual(other,[{scope:'district',label:'[TEST] District'}]);
+});

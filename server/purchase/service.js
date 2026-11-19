@@ -5,7 +5,7 @@ import { transaction,audit } from '../db/pool.js';
 import { lockedUser } from '../auth/sessions.js';
 import { permissionsFor } from '../permissions.js';
 import { HttpError,badInput } from '../errors.js';
-import { Bindings,areaMatch,paged,publishedProduct,filterCategories } from '../marketplace/service.js';
+import { Bindings,districtAreaMatch,paged,publishedProduct,filterCategories } from '../marketplace/service.js';
 export const notFound=()=>new HttpError(404,'NOT_FOUND','This private record was not found.');
 export const conflict=message=>new HttpError(409,'WORKFLOW_CHANGED',message);
 export async function withCustomer(req,permission,work){return transaction(async db=>{const user=await lockedUser(db,req);if(permission!=='customer.profile'||(req.originalUrl||'').split('?')[0]!=='/api/reminders/preferences')requireCustomer(user);if(!(await permissionsFor(db,'customer')).includes(permission))throw new HttpError(403,'PERMISSION_DENIED','Customer access is unavailable.');return work(db,user);});}
@@ -19,55 +19,33 @@ export async function matching(db,data,page=1,companyId=null){
  if(data.categoryId&&!(await db.query('SELECT id FROM catalogue_categories WHERE id=$1 AND active',[data.categoryId])).rowCount)throw badInput('Choose an active category.');
  // marketplace_vendors already enforces public-listing eligibility. Receiving a
  // customer request must not require paid CRM access; staff writes stay gated.
- const b=new Bindings(),where=[areaMatch(b,data.location)];if(companyId)where.push(`v.id=${b.add(companyId)}`);
+ const b=new Bindings(),where=[districtAreaMatch(b,data.location)];if(companyId)where.push(`v.id=${b.add(companyId)}`);
  if(data.service)where.push(`${b.add(data.service)}=ANY(v.services)`);
- if(data.productId||data.categoryId||data.offerId){const terms=['o.company_id=v.id',areaMatch(b,data.location,'v.id','o.coverage_labels')];if(data.productId)terms.push(`o.product_id=${b.add(data.productId)}`);if(data.categoryId){const c=b.add(data.categoryId);terms.push(`(p.category_id=${c} OR p.subcategory_id=${c})`);}if(data.offerId)terms.push(`o.id=${b.add(data.offerId)}`);where.push(`EXISTS(SELECT 1 FROM marketplace_offers o JOIN marketplace_products p ON p.id=o.product_id WHERE ${terms.join(' AND ')})`);}
+ if(data.productId||data.categoryId||data.offerId){const terms=['o.company_id=v.id',districtAreaMatch(b,data.location,'v.id','o.coverage_labels')];if(data.productId)terms.push(`o.product_id=${b.add(data.productId)}`);if(data.categoryId){const c=b.add(data.categoryId);terms.push(`(p.category_id=${c} OR p.subcategory_id=${c})`);}if(data.offerId)terms.push(`o.id=${b.add(data.offerId)}`);where.push(`EXISTS(SELECT 1 FROM marketplace_offers o JOIN marketplace_products p ON p.id=o.product_id WHERE ${terms.join(' AND ')})`);}
  const result=await paged(db,'v.id,v.name,v.city,v.services,v.service_areas','FROM marketplace_vendors v',where.join(' AND '),b,page,'v.name,v.id');
  if(companyId&&!result.total)result.mismatch=await mismatch(db,data,companyId);
- if(!companyId&&!result.total)result.mismatch=await locationMismatch(db,data)||{code:'LOCATION_NOT_COVERED',message:'No published distributor has verified coverage for the selected installation locality and service.'};
+ if(!companyId&&!result.total)result.mismatch={code:'LOCATION_NOT_COVERED',message:'No published distributor has approved district-wide coverage for the selected district and service.'};
  // Coordinates are deliberately not inferred from company addresses or coverage names.
  // Until independently reviewed coordinates exist, the UI may show a location list but
  // must not present pins, distances, or a radius-based result as fact.
  const discovery={mapAvailable:false,nearbyRadiusKm:25,reason:'Verified company coordinates are not available for map discovery.'};
- const nearby=!result.total&&!companyId?await locationCandidates(db,data):null;
- return {...result,product,discovery,nearby};
-}
-async function locationCandidates(db,data){
- // This is an explicitly non-eligible fallback. It groups only published companies
- // that declare some coverage in the requested district; it never claims they serve
- // the selected PIN/locality, offer the requested product, or are physically nearby.
- // This is a discovery hint, not an eligibility decision: using areaMatch here
- // would discard every named-locality area because it requires the customer's
- // exact PIN and locality. Show district declarations without claiming a match.
- const b=new Bindings(),state=b.add(data.location.state),district=b.add(data.location.district);
- const where=[`EXISTS(SELECT 1 FROM company_service_areas a WHERE a.company_id=v.id AND a.state_key=${state} AND (a.district_key=${district} OR (a.scope='state' AND a.district_key='')))`];
- const result=await paged(db,'v.id,v.name,v.city,v.service_areas','FROM marketplace_vendors v',where.join(' AND '),b,1,'v.name,v.id',6);
- return {mode:'location_list',coordinatesVerified:false,nearbyRadiusKm:25,total:result.total,items:result.items};
+ return {...result,product,discovery,nearby:null};
 }
 async function mismatch(db,data,companyId){
  // Explain only currently public information; never disclose private company states.
  const vendor=(await db.query('SELECT id,name,services FROM marketplace_vendors WHERE id=$1',[companyId])).rows[0];
  if(!vendor)return {code:'DISTRIBUTOR_UNAVAILABLE',message:'The selected distributor is no longer publicly available for this request. Return to Find Solar Companies.'};
- const problem=await locationMismatch(db,data);if(problem)return problem;
  if(data.service&&!vendor.services.includes(data.service))return {code:'SERVICE_NOT_LISTED',message:`${vendor.name} does not currently list the requested service. Choose a service it offers or another distributor.`};
- const b=new Bindings(),predicate=areaMatch(b,data.location);b.values.push(companyId);
+ const b=new Bindings(),predicate=districtAreaMatch(b,data.location);b.values.push(companyId);
  const covered=(await db.query(`SELECT 1 FROM marketplace_vendors v WHERE ${predicate} AND v.id=$${b.values.length}`,b.values)).rowCount;
  if(!covered){
   const incomplete=(await db.query("SELECT 1 FROM company_service_areas WHERE company_id=$1 AND state_key='' LIMIT 1",[companyId])).rowCount;
-  return {code:incomplete?'COVERAGE_INCOMPLETE':'LOCATION_NOT_COVERED',message:`${vendor.name} does not currently list this installation location in its service coverage.`+(incomplete?' Its published coverage contains unstructured area names; the distributor needs to confirm structured coverage.':' Check the installation State, District and PIN, or choose another distributor.')};
+  return {code:incomplete?'COVERAGE_INCOMPLETE':'LOCATION_NOT_COVERED',message:`${vendor.name} does not currently have approved district-wide coverage for this installation district.`+(incomplete?' Its published coverage contains unstructured area names; the distributor needs to confirm structured coverage.':' Check the installation State and District, or choose another distributor.')};
  }
  return {code:'OFFER_NOT_AVAILABLE',message:`${vendor.name} has no eligible published offer for the selected product or category and location. For general advice, leave the product category blank and select a listed service.`};
 }
-async function locationMismatch(db,data){
- const postal=(await db.query('SELECT state_key,district_key FROM postal_locations WHERE pin=$1 AND active',[data.pin])).rows[0];
- if(!postal||postal.state_key!==data.location.state||postal.district_key!==data.location.district)return {code:'POSTAL_UNVERIFIED',message:'This installation State, District and PIN combination cannot be verified against reviewed postal data. No request will be sent.'};
- if(data.location.locality&&!(await db.query('SELECT id FROM postal_localities WHERE pin=$1 AND locality_key=$2 AND active',[data.pin,data.location.locality])).rowCount)return {code:'LOCALITY_UNVERIFIED',message:'Choose a reviewed locality for this installation PIN. If it is missing, contact support to have the location independently reviewed.'};
- return null;
-}
 export async function eligibleRecipients(db,data){
- // Keep reference withdrawals stable until routing commits, just like company publication.
- await db.query('SELECT pin FROM postal_locations WHERE pin=$1 AND active FOR SHARE',[data.pin]);
- if(data.location.locality)await db.query('SELECT id FROM postal_localities WHERE pin=$1 AND locality_key=$2 AND active FOR SHARE',[data.pin,data.location.locality]);
+ // Company-row locks serialize routing with coverage edits and publication withdrawals.
  if(data.companyIds.length)await db.query('SELECT id FROM companies WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE',[data.companyIds]);
  if(data.companyIds.length&&(data.productId||data.categoryId||data.offerId)){
   // Hold definition/category publication stable until routing commits. Offer edits already lock their company.
@@ -76,12 +54,12 @@ export async function eligibleRecipients(db,data){
   if(categories.length)await db.query('SELECT id FROM catalogue_categories WHERE id=ANY($1::uuid[]) ORDER BY parent_id NULLS FIRST,id FOR SHARE',[categories]);
  }
  // Reuse exactly the preview predicate, bounded to selected IDs rather than silently matching new vendors.
- const b=new Bindings(),where=[`v.id=ANY(${b.add(data.companyIds)}::uuid[])`,areaMatch(b,data.location)];
+ const b=new Bindings(),where=[`v.id=ANY(${b.add(data.companyIds)}::uuid[])`,districtAreaMatch(b,data.location)];
  if(data.service)where.push(`${b.add(data.service)}=ANY(v.services)`);
  if(data.productId)await publishedProduct(db,data.productId);
  if(data.categoryId&&!(await db.query('SELECT id FROM catalogue_categories WHERE id=$1 AND active',[data.categoryId])).rowCount)throw badInput('This category is unavailable.');
  if(data.productId&&data.categoryId){const p=await publishedProduct(db,data.productId);if(![p.category_id,p.subcategory_id].includes(data.categoryId))throw badInput('Product and category do not match.');}
- if(data.productId||data.categoryId||data.offerId){const terms=['o.company_id=v.id',areaMatch(b,data.location,'v.id','o.coverage_labels')];if(data.productId)terms.push(`o.product_id=${b.add(data.productId)}`);if(data.categoryId){const c=b.add(data.categoryId);terms.push(`(p.category_id=${c} OR p.subcategory_id=${c})`);}if(data.offerId)terms.push(`o.id=${b.add(data.offerId)}`);where.push(`EXISTS(SELECT 1 FROM marketplace_offers o JOIN marketplace_products p ON p.id=o.product_id WHERE ${terms.join(' AND ')})`);}
+ if(data.productId||data.categoryId||data.offerId){const terms=['o.company_id=v.id',districtAreaMatch(b,data.location,'v.id','o.coverage_labels')];if(data.productId)terms.push(`o.product_id=${b.add(data.productId)}`);if(data.categoryId){const c=b.add(data.categoryId);terms.push(`(p.category_id=${c} OR p.subcategory_id=${c})`);}if(data.offerId)terms.push(`o.id=${b.add(data.offerId)}`);where.push(`EXISTS(SELECT 1 FROM marketplace_offers o JOIN marketplace_products p ON p.id=o.product_id WHERE ${terms.join(' AND ')})`);}
  const rows=(await db.query(`SELECT v.id,v.name,v.city FROM marketplace_vendors v WHERE ${where.join(' AND ')} ORDER BY v.id`,b.values)).rows;
  if(rows.length!==data.companyIds.length){const missing=data.companyIds.find(id=>!rows.some(row=>row.id===id));throw conflict((await mismatch(db,data,missing)).message);}return rows;
 }

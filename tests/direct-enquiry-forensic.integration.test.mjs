@@ -25,13 +25,21 @@ test('direct enquiries diagnose legacy coverage, preserve eligibility and comple
  const operator=fx.client();await operator.register('forensic-independent-operator');await db.query("INSERT INTO platform_admin_grants(user_id,reason) VALUES($1,'[TEST] Explicit disposable bootstrap')",[operator.user.id]);
  const revision=async()=>(await db.query('SELECT revision FROM companies WHERE id=$1',[companyA])).rows[0].revision;
  await expect(a.request('/companies/current/service-areas','PUT',{revision:await revision(),areas:[{scope:'pin',label:'[TEST] Payyanur installation PIN',state:'Kerala',district:'Kannur',pin:'670307',locality:''}]}),200);
- await t.test('coverage correction requires renewed independent approval and publication',async()=>{
+ await t.test('PIN-only coverage requires renewed review and cannot imply district-wide coverage',async()=>{
   assert.equal((await expect(matches(),200)).mismatch.code,'DISTRIBUTOR_UNAVAILABLE');
   for(const action of ['approve_marketplace','publish'])await expect(operator.request('/platform/companies/'+companyA+'/actions','POST',{action,revision:await revision(),reason:'[TEST] Reviewed fictional exact installation coverage'}),200);
+  assert.equal((await expect(matches(),200)).total,0);
+  await expect(customer.request('/customer/enquiries','POST',{...payload,companyIds:[companyA],submissionKey:randomUUID()}),409);
+ });
+ await t.test('explicit fictional district-wide coverage requires independent approval and publication',async()=>{
+  await expect(a.request('/companies/current/service-areas','PUT',{revision:await revision(),areas:[{scope:'district',label:'[TEST] Entire Kannur district',state:'Kerala',district:'Kannur',pin:'',locality:'',confirmEntireDistrict:true}]}),200);
+  assert.equal((await expect(matches(),200)).mismatch.code,'DISTRIBUTOR_UNAVAILABLE');
+  for(const action of ['approve_marketplace','publish'])await expect(operator.request('/platform/companies/'+companyA+'/actions','POST',{action,revision:await revision(),reason:'[TEST] Reviewed fictional district-wide coverage'}),200);
   const result=await expect(matches(),200);assert.deepEqual(result.items.map(v=>v.id),[companyA]);
  });
- await t.test('wrong PIN/district, unavailable service and product category fail specifically',async()=>{
-  for(const changes of [{pin:'123456'},{pin:'123455'},{district:'Ernakulam'}])assert.equal((await expect(matches(changes),200)).mismatch.code,'POSTAL_UNVERIFIED');
+ await t.test('optional PIN does not alter eligibility; wrong district, service and product fail specifically',async()=>{
+  for(const changes of [{pin:''},{pin:'123456'},{pin:'123455'}])assert.equal((await expect(matches(changes),200)).total,1);
+  assert.equal((await expect(matches({district:'Ernakulam'}),200)).mismatch.code,'LOCATION_NOT_COVERED');
   await expect(matches({state:'Tamil Nadu'}),400);await expect(matches({pin:'012345'}),400);
   assert.equal((await expect(matches({service:'maintenance'}),200)).mismatch.code,'SERVICE_NOT_LISTED');
   assert.equal((await expect(matches({categoryId:'10000000-0000-4000-8000-000000000002'}),200)).mismatch.code,'OFFER_NOT_AVAILABLE');

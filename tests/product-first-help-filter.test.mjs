@@ -46,6 +46,14 @@ test('generic Help me choose uses advice intent and leaves service optional',()=
  assert.match(html,/name="projectType">[\s\S]*?<option value="advice" selected>/);
 });
 
+test('district discovery requires no PIN or reviewed-locality selection',()=>{
+ const html=enquiry('home');
+ assert.match(html,/name="state"/);assert.match(html,/name="district"/);
+ assert.match(html,/PIN code \(optional\)/);assert.match(html,/name="pin"[^>]*pattern="\[1-9\]\[0-9\]\{5\}"/);
+ assert.doesNotMatch(html,/name="pin"[^>]*required/);assert.doesNotMatch(html,/Reviewed installation locality/);
+ assert.match(html,/Only companies that have been approved to serve the entire selected district/);
+});
+
 test('company profile context reaches the direct-recipient quotation form',()=>{
  const id='821518ce-91b6-4aa5-a7ff-7ca5bb751c90',html=enquiry('1',id);
  assert.match(html,/Requesting a quotation from <strong>\[TEST\] Selected distributor<\/strong>/);

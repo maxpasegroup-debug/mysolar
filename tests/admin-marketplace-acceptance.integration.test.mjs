@@ -59,14 +59,14 @@ test('real disposable PostgreSQL: registration, independent approval, marketplac
   await expect(client.request('/companies/current/onboarding/profile','PUT',{revision:(await setup(client)).company.revision,legalName:name+' Legal',displayName:name,businessType:'both',contactPerson:'[TEST] Owner',email:client.user.email,phone:'0000000000',address:'[TEST] Fictional premises',state:'Kerala',district:'Ernakulam',pin:'682001',language:'en',website:''}),200);
   await expect(client.request('/companies/current/branding','PUT',{revision:(await setup(client)).company.revision,publicName:name,logoUrl:'',primary:'#601c2b',secondary:'#292b29',accent:'#d8ab55',welcome:'[TEST] Acceptance listing',email:client.user.email,phone:'',description:'[TEST] Fictional consultation and installation company',appearance:'warm',requestedDomain:''}),200);
   await expect(client.request('/companies/current/onboarding/business','PUT',{revision:(await setup(client)).company.revision,services:['energy_consultation','rooftop_installation'],rooftop:true,areas:['[TEST] Ernakulam'],contactMethod:'email',marketplaceRequested:true}),200);
-  await expect(client.request('/companies/current/service-areas','PUT',{revision:(await setup(client)).company.revision,areas:[{scope:'pin',label:'[TEST] Ernakulam',state:'Kerala',district:'Ernakulam',pin:'682001',locality:''}]}),200);
+  await expect(client.request('/companies/current/service-areas','PUT',{revision:(await setup(client)).company.revision,areas:[{scope:'district',label:'[TEST] Ernakulam',state:'Kerala',district:'Ernakulam',pin:'',locality:'',confirmEntireDistrict:true}]}),200);
   return company;
  }
  let companyA,companyB,enquiryId,quoteId;
  const decision=async(company,action,reason='[TEST] Reviewed fictional application')=>{const c=(await db.query('SELECT revision FROM companies WHERE id=$1',[company])).rows[0];return expect(operator.request('/platform/companies/'+company+'/actions','POST',{action,revision:c.revision,reason}),200);};
  await t.test('02 company profile, public identity, services and exact coverage persist through real APIs',async()=>{
   companyA=await complete(owner,'[TEST] Acceptance Aurora Solar');companyB=await complete(otherOwner,'[TEST] Acceptance Boreal Solar');
-  assert.equal((await setup(owner)).profile.legal_name,'[TEST] Acceptance Aurora Solar Legal');assert.equal((await db.query('SELECT pin FROM company_service_areas WHERE company_id=$1',[companyA])).rows[0].pin,'682001');
+  assert.equal((await setup(owner)).profile.legal_name,'[TEST] Acceptance Aurora Solar Legal');assert.deepEqual((await db.query('SELECT scope,state_key,district_key,pin FROM company_service_areas WHERE company_id=$1',[companyA])).rows[0],{scope:'district',state_key:'kerala',district_key:'ernakulam',pin:''});
  });
  await t.test('03 owner submission enters activation/marketplace queues without automatic publication',async()=>{
   for(const client of [owner,otherOwner]){await expect(client.request('/companies/current/onboarding/submit','POST',{revision:(await setup(client)).company.revision}),200);const c=(await setup(client)).company;assert.equal(c.lifecycle,'pending_review');assert.equal(c.marketplace_status,'pending');assert.equal(c.storefront_published,false);}
@@ -94,13 +94,13 @@ test('real disposable PostgreSQL: registration, independent approval, marketplac
   const reviews=(await db.query('SELECT kind,new_state FROM company_reviews WHERE company_id=$1 ORDER BY id',[companyA])).rows;assert.ok(reviews.some(r=>r.kind==='lifecycle'&&r.new_state==='active'));assert.ok(reviews.some(r=>r.kind==='marketplace'&&r.new_state==='approved'));assert.ok(reviews.some(r=>r.new_state==='published'));
  });
  await t.test('08 customer company search returns the persisted published business only',async()=>{
-  const d=await expect(customer.request('/public/vendors?search=Acceptance%20Aurora&pin=682001'),200);assert.deepEqual(d.items.map(v=>v.id),[companyA]);
+  const d=await expect(customer.request('/public/vendors?search=Acceptance%20Aurora&state=Kerala&district=Ernakulam'),200);assert.deepEqual(d.items.map(v=>v.id),[companyA]);
  });
  await t.test('09 public API/profile renders saved public identity without private contact data',async()=>{
-  const d=await expect(customer.request('/public/vendors/'+companyA),200);assert.equal(d.vendor.id,companyA);assert.equal(d.vendor.name,'[TEST] Acceptance Aurora Solar');assert.ok(d.areas.some(a=>a.pin==='682001'));for(const field of ['business_email','password_hash','created_by','customer_id'])assert.equal(Object.hasOwn(d.vendor,field),false);
+  const d=await expect(customer.request('/public/vendors/'+companyA),200);assert.equal(d.vendor.id,companyA);assert.equal(d.vendor.name,'[TEST] Acceptance Aurora Solar');assert.ok(d.areas.some(a=>a.scope==='district'&&a.district==='Ernakulam'));for(const field of ['business_email','password_hash','created_by','customer_id'])assert.equal(Object.hasOwn(d.vendor,field),false);
   const r=await fetch(env.base+'/companies/'+companyA);assert.equal(r.status,200);assert.match(await r.text(),/Acceptance Aurora Solar/);
  });
- const enquiry={title:'[TEST] Rooftop consultation',requestedItem:'Solar advice and installation',categoryId:'',productId:'',offerId:'',quantity:'',unit:'',projectType:'rooftop_home',state:'Kerala',district:'Ernakulam',pin:'682001',locality:'',address:'[TEST] Fictional roof',requirements:'[TEST] Describe equipment options',contactMethod:'in_app',timeframe:'',mode:'direct',service:'energy_consultation'};
+ const enquiry={title:'[TEST] Rooftop consultation',requestedItem:'Solar advice and installation',categoryId:'',productId:'',offerId:'',quantity:'',unit:'',projectType:'rooftop_home',state:'Kerala',district:'Ernakulam',pin:'',locality:'',address:'[TEST] Fictional roof',requirements:'[TEST] Describe equipment options',contactMethod:'in_app',timeframe:'',mode:'direct',service:'energy_consultation'};
  await t.test('10 customer matches and sends one direct enquiry, with retry returning the same record',async()=>{
   const matches=await expect(customer.request('/customer/enquiry-matches','POST',{enquiry,page:1,companyId:companyA}),200);assert.deepEqual(matches.items.map(v=>v.id),[companyA]);
   const payload={...enquiry,companyIds:[companyA],submissionKey:randomUUID()};const sent=await expect(customer.request('/customer/enquiries','POST',payload),201);enquiryId=sent.id;assert.equal((await expect(customer.request('/customer/enquiries','POST',payload),201)).id,enquiryId);

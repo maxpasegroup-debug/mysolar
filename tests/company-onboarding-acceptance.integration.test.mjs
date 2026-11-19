@@ -40,16 +40,19 @@ test('complete company onboarding and independent login for every supported staf
   assert.equal((await owner.request('/platform/companies/'+companyId+'/actions','POST',action)).status,403);
   assert.equal((await operator.request('/platform/companies/'+companyId+'/actions','POST',action)).status,200);
   const data=await setup();assert.equal(data.company.lifecycle,'active');assert.equal(data.company.storefront_published,false);
-  const daily=await owner.request('/companies/current/operations/dashboard');assert.equal(daily.status,403);assert.equal(daily.data.error.code,'OS_ACTIVATION_REQUIRED');
+  const daily=await owner.request('/companies/current/operations/dashboard');assert.equal(daily.status,403);assert.equal(daily.data.error.code,'OS_SUBSCRIPTION_REQUIRED');
   assert.equal((await db.query('SELECT count(*)::int AS n FROM company_subscriptions')).rows[0].n,0);
  });
- await t.test('PRO-only role is blocked until explicit authorized trial assignment',async()=>{
-  assert.equal((await owner.request('/companies/current/invitations','POST',{email:'part_time_sales@example.invalid',role:'part_time_sales',delivery:'share'})).data.error.code,'OS_ACTIVATION_REQUIRED');
+ await t.test('unplanned team capacity is blocked until explicit authorized manual assignment',async()=>{
+  const invitation=await owner.request('/companies/current/invitations','POST',{email:'part_time_sales@example.invalid',role:'part_time_sales',delivery:'share'});
+  assert.equal(invitation.status,409);assert.equal(invitation.data.error.code,'PLAN_LIMIT_REACHED');
   const {features,limitNames}=await import('../server/commercial/policy.js');
   const terms={name:'[LOCAL TEST] PRO',description:'Fictional test terms only',price:'5999',currency:'INR',taxMode:'exclusive',taxRate:'18',interval:'monthly',trialDays:7,effectiveFrom:new Date(Date.now()-86400000).toISOString(),effectiveTo:null,features:Object.fromEntries(Object.keys(features).map(k=>[k,k!=='custom_domain'])),limits:Object.fromEntries(Object.keys(limitNames).map(k=>[k,null])),support:''};
   const plan=await operator.request('/platform/commercial/plans','POST',{code:'pro',terms,reason:'[LOCAL TEST] plan fixture'});assert.equal(plan.status,201,JSON.stringify(plan.data));
   assert.equal((await operator.request('/platform/commercial/plans/'+plan.data.id+'/state','POST',{revision:1,status:'active',reason:'[LOCAL TEST] publish fixture'})).status,200);
-  const assigned=await operator.request('/platform/commercial/companies/'+companyId+'/subscriptions','POST',{revision:0,planId:plan.data.id,status:'trial',startAt:new Date(Date.now()-30000).toISOString(),endAt:new Date(Date.now()+6*86400000).toISOString(),reason:'[LOCAL TEST] manually assigned access; no payment'});assert.equal(assigned.status,201,JSON.stringify(assigned.data));
+  const assignment={revision:0,planId:plan.data.id,startAt:new Date(Date.now()-30000).toISOString(),endAt:new Date(Date.now()+6*86400000).toISOString(),reason:'[LOCAL TEST] manually assigned access; no payment'};
+  assert.equal((await operator.request('/platform/commercial/companies/'+companyId+'/subscriptions','POST',{...assignment,status:'trial'})).status,400);
+  const assigned=await operator.request('/platform/commercial/companies/'+companyId+'/subscriptions','POST',{...assignment,status:'active'});assert.equal(assigned.status,201,JSON.stringify(assigned.data));
  });
  for(const role of staffRoles)await t.test(role+': register, accept recipient-bound invitation, logout and login independently',async()=>{
   // Test-only bucket rollover, confined to the generated schema: a whole team

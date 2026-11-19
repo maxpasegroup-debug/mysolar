@@ -11,17 +11,19 @@ test('product-first quotation discovery uses published facts and the final routi
  const card=options.data.discoverableProducts.find(item=>item.id===product);assert.ok(card,'a card must be based on an actual published product with a published seller offer');assert.equal(card.offer_count,2);assert.ok(!Object.hasOwn(card,'distance'));
  const eligible=await customer.request('/customer/enquiry-matches','POST',{enquiry,page:1});assert.equal(eligible.status,200,JSON.stringify(eligible.data));assert.deepEqual(eligible.data.items.map(item=>item.id).sort(),[companyA,companyB].sort());assert.equal(eligible.data.discovery.mapAvailable,false);assert.equal(eligible.data.discovery.nearbyRadiusKm,25);
  const unsupported={...enquiry,service:'maintenance'};
- const noMatch=await customer.request('/customer/enquiry-matches','POST',{enquiry:unsupported,page:1});assert.equal(noMatch.status,200,JSON.stringify(noMatch.data));assert.equal(noMatch.data.total,0);assert.equal(noMatch.data.nearby.mode,'location_list');assert.equal(noMatch.data.nearby.coordinatesVerified,false);assert.ok(noMatch.data.nearby.items.every(item=>!Object.hasOwn(item,'distance')&&!Object.hasOwn(item,'latitude')&&!Object.hasOwn(item,'longitude')));
+ const noMatch=await customer.request('/customer/enquiry-matches','POST',{enquiry:unsupported,page:1});assert.equal(noMatch.status,200,JSON.stringify(noMatch.data));assert.equal(noMatch.data.total,0);assert.equal(noMatch.data.nearby,null,'unqualified companies must not appear as quotation results');
  const rejected=await customer.request('/customer/enquiries','POST',{...unsupported,companyIds:[companyA],submissionKey:randomUUID()});assert.equal(rejected.status,409,'final submission must revalidate product/service and location eligibility');
  const help={...enquiry,title:'[TEST] Help choosing request',requestedItem:'Help me choose a solar solution',categoryId:'',productId:'',offerId:'',projectType:'advice',service:'',helpMeChoose:true,mode:'direct'};
  const helpMatches=await customer.request('/customer/enquiry-matches','POST',{enquiry:help,page:1,companyId:companyA});assert.equal(helpMatches.status,200,JSON.stringify(helpMatches.data));assert.deepEqual(helpMatches.data.items.map(item=>item.id),[companyA],'explicit guidance does not require a published product or an energy-consultation service declaration');
  const helpSent=await customer.request('/customer/enquiries','POST',{...help,companyIds:[companyA],submissionKey:randomUUID()});assert.equal(helpSent.status,201,JSON.stringify(helpSent.data));assert.equal((await customer.request('/customer/enquiry-matches','POST',{enquiry:{...help,helpMeChoose:false},page:1,companyId:companyA})).status,400,'generic routing requires the explicit Help me choose choice');
- // A locality-only declaration is useful for a district discovery hint even
- // when it does not cover the requested service; it must not make it eligible.
- await db.query(`UPDATE company_service_areas SET scope='locality',locality='Kochi',locality_key='kochi',locality_reference_id=(SELECT id FROM postal_localities WHERE pin='682001' AND locality_key='kochi') WHERE company_id=$1`,[companyA]);
+ // Named-locality coverage is narrower than district coverage and may not be
+ // widened even if the customer enters the matching locality and PIN.
+ await db.query(`UPDATE company_service_areas SET scope='locality',pin='682001',locality='Kochi',locality_key='kochi',locality_reference_id=(SELECT id FROM postal_localities WHERE pin='682001' AND locality_key='kochi') WHERE company_id=$1`,[companyA]);
  const localityOnly=await customer.request('/customer/enquiry-matches','POST',{enquiry:{...unsupported,locality:'Kochi'},page:1});
  assert.equal(localityOnly.status,200,JSON.stringify(localityOnly.data));assert.equal(localityOnly.data.total,0);
- assert.ok(localityOnly.data.nearby.items.some(item=>item.id===companyA),'a locality-only business should appear in the clearly non-eligible district list');
+ assert.equal(localityOnly.data.nearby,null);
  const stillRejected=await customer.request('/customer/enquiries','POST',{...unsupported,locality:'Kochi',companyIds:[companyA],submissionKey:randomUUID()});
  assert.equal(stillRejected.status,409,'district discovery must never bypass service or coverage checks when sending');
+ const noDistrict=await customer.request('/customer/enquiry-matches','POST',{enquiry:{...help,locality:'Kochi'},page:1,companyId:companyA});assert.equal(noDistrict.status,200);assert.equal(noDistrict.data.total,0);
+ assert.equal((await customer.request('/customer/enquiries','POST',{...help,locality:'Kochi',companyIds:[companyA],submissionKey:randomUUID()})).status,409,'matching PIN/locality cannot widen coverage to the entire district');
 });

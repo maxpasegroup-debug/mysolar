@@ -79,7 +79,8 @@ window.Marketplace=(()=>{
     const districtScope=row.querySelector('[name=scope]').value==='district';confirmation.disabled=!districtScope;confirmation.required=districtScope;row.querySelector('[data-district-confirm-label]').hidden=!districtScope;row.querySelector('[data-district-hint]').hidden=!districtScope;
     for(const name of ['pin','locality']){const input=row.querySelector(`[name=${name}]`);input.readOnly=districtScope&&!input.value;}
   });
-  document.addEventListener('invalid',event=>{const input=event.target,f=input.closest('#market-areas');if(!f)return;const target=f.querySelector('.market-feedback');if(target)target.textContent=input.matches('[data-district-confirm]')?'Confirm that your company serves the entire district before saving.':'Please check the highlighted coverage field and try again.';},true);
+  const invalidCoverageForms=new WeakSet();
+  document.addEventListener('invalid',event=>{const input=event.target,f=input.closest('#market-areas');if(!f||invalidCoverageForms.has(f))return;const target=f.querySelector('.market-feedback');if(!target)return;invalidCoverageForms.add(f);Promise.resolve().then(()=>invalidCoverageForms.delete(f));const label=input.labels?.[0]?.textContent?.trim()||'Coverage field';target.textContent=input.matches('[data-district-confirm]')?'Confirm that your company serves the entire district before saving.':`${label}: ${input.validationMessage||'Please check this field.'}`;},true);
   document.addEventListener('submit',event=>{const f=event.target;if(!f.matches('.market-form,#market-filter'))return;event.preventDefault();const d=Object.fromEntries(new FormData(f));perform(async()=>{
     if(f.id==='market-filter'){const q=new URLSearchParams();for(const [key,value] of Object.entries(d))if(value)q.set(key,value);A().navigate(path()+'?'+q);return;}
     if(d.revision)d.revision=Number(d.revision);

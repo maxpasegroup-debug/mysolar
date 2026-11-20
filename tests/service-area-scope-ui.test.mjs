@@ -34,3 +34,16 @@ test('invalid district confirmation produces visible save guidance',()=>{
  handlers.invalid({target:{closest:()=>form,matches:()=>true}});
  assert.match(feedback.textContent,/Confirm.*entire district/);
 });
+
+test('invalid coverage feedback identifies the first field and includes its browser validation message',async()=>{
+ const handlers={},document={addEventListener(type,fn){handlers[type]=fn;}};
+ vm.runInNewContext(readFileSync(new URL('../src/marketplace.js',import.meta.url),'utf8'),{window:{addEventListener(){}},document,location:{hash:''},URLSearchParams});
+ const feedback={textContent:''},form={querySelector(){return feedback;}};
+ const input=(label,message)=>({closest:()=>form,matches:()=>false,labels:[{textContent:label}],validationMessage:message});
+ handlers.invalid({target:input('Public area label','Please fill out this field.')});
+ handlers.invalid({target:input('PIN','Please match the requested format.')});
+ assert.equal(feedback.textContent,'Public area label: Please fill out this field.');
+ await Promise.resolve();
+ handlers.invalid({target:input('PIN','Please match the requested format.')});
+ assert.equal(feedback.textContent,'PIN: Please match the requested format.');
+});

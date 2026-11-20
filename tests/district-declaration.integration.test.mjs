@@ -8,7 +8,7 @@ test('explicit district coverage preserves legacy localities and requires indepe
  const operator=fx.client();await operator.register('district-coverage-reviewer');
  await db.query("INSERT INTO platform_admin_grants(user_id,reason) VALUES($1,'[TEST] independent district coverage reviewer')",[operator.user.id]);
  const legacyId=randomUUID();
- await db.query("INSERT INTO company_service_areas(id,company_id,scope,label,state,district,pin,locality,state_key,district_key,locality_key) VALUES($1,$2,'locality','[TEST] legacy town','Kerala','Kannur','','Payyanur','kerala','kannur','payyanur')",[legacyId,companyA]);
+ await db.query("INSERT INTO company_service_areas(id,company_id,scope,label,state,district,pin,locality,state_key,district_key,locality_key) VALUES($1,$2,'locality','[TEST] legacy town','kerala','kannur','','Payyanur','kerala','kannur','payyanur')",[legacyId,companyA]);
  const existing=(await a.request('/companies/current/service-areas')).data;
  const district={scope:'district',label:'[TEST] whole Kannur',state:'Kerala',district:'Kannur',pin:'',locality:'',confirmEntireDistrict:true};
  const old=existing.areas.find(row=>row.id===legacyId);assert.ok(old);
@@ -27,6 +27,14 @@ test('explicit district coverage preserves legacy localities and requires indepe
  const saved=await a.request('/companies/current/service-areas','PUT',payload);assert.equal(saved.status,200,JSON.stringify(saved.data));
  const retained=(await db.query('SELECT id,pin,locality,locality_reference_id FROM company_service_areas WHERE id=$1 AND company_id=$2',[legacyId,companyA])).rows[0];
  assert.deepEqual(retained,{id:legacyId,pin:'',locality:'Payyanur',locality_reference_id:null});
+ // The owner may also deliberately replace an existing legacy declaration in place.
+ // Keep the same fixture: isolatedApp uses a singleton app/pool per test process.
+ const current=(await a.request('/companies/current/service-areas')).data;
+ const edited=current.areas.map(area=>area.id===legacyId?{...area,scope:'district',label:'[TEST] Kannur',pin:'',locality:'',confirmEntireDistrict:true}:area);
+ const replaced=await a.request('/companies/current/service-areas','PUT',{revision:current.company.revision,areas:edited});
+ assert.equal(replaced.status,200,JSON.stringify(replaced.data));
+ const row=(await db.query('SELECT id,scope,state,district,pin,locality,locality_reference_id FROM company_service_areas WHERE id=$1 AND company_id=$2',[legacyId,companyA])).rows[0];
+ assert.deepEqual(row,{id:legacyId,scope:'district',state:'kerala',district:'kannur',pin:'',locality:'',locality_reference_id:null});
  const state=(await db.query('SELECT revision,marketplace_status,storefront_published FROM companies WHERE id=$1',[companyA])).rows[0];
  assert.equal(state.marketplace_status,'pending');assert.equal(state.storefront_published,false);
  assert.equal((await customer.request('/public/vendors/'+companyA)).status,404);

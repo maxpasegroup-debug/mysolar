@@ -47,3 +47,13 @@ test('invalid coverage feedback identifies the first field and includes its brow
  handlers.invalid({target:input('PIN','Please match the requested format.')});
  assert.equal(feedback.textContent,'PIN: Please match the requested format.');
 });
+
+test('legacy lowercase state selections still load the correct district choices',()=>{
+ const changes=[],document={addEventListener(type,fn){if(type==='change')changes.push(fn);}};
+ const context={window:{addEventListener(){}},document,location:{hash:''},URLSearchParams,IndiaGeography:{Kerala:['Kannur','Kozhikode']},escapeHTML:value=>String(value)};
+ vm.runInNewContext(readFileSync(new URL('../src/marketplace.js',import.meta.url),'utf8'),context);
+ const district={innerHTML:''},scope={value:'locality'},pin={value:''},locality={value:''},confirm={checked:true},label={},hint={};
+ const row={querySelector(selector){return ({'[name=district]':district,'[name=scope]':scope,'[name=pin]':pin,'[name=locality]':locality,'[data-district-confirm]':confirm,'[data-district-confirm-label]':label,'[data-district-hint]':hint})[selector];}};
+ changes.find(fn=>String(fn).includes('data-district-confirm'))({target:{name:'state',value:'kerala',closest:()=>row}});
+ assert.match(district.innerHTML,/value="Kannur"/);assert.match(district.innerHTML,/value="Kozhikode"/);assert.equal(confirm.checked,false);
+});

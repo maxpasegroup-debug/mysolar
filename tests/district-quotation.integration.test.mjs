@@ -40,6 +40,15 @@ test('district-only quotation matching preserves approved scopes and ignores opt
   assert.equal((await match({district:'Kannur'})).data.total,0);
   assert.equal((await match({state:'Tamil Nadu'})).status,400);
  });
+ await t.test('manually entered locality is saved without widening district eligibility',async()=>{
+  const installation={pin:'682001',locality:'[TEST] Harbour'};
+  const preview=await match(installation);assert.equal(preview.status,200);assert.deepEqual(preview.data.items.map(v=>v.id),[companyA]);
+  const sent=await send(companyA,installation);assert.equal(sent.status,201,JSON.stringify(sent.data));
+  const stored=(await db.query('SELECT state,district,pin,locality FROM customer_enquiries WHERE id=$1',[sent.data.id])).rows[0];
+  assert.deepEqual(stored,{state:'Kerala',district:'Ernakulam',pin:'682001',locality:'[TEST] Harbour'});
+  assert.equal((await a.request('/companies/current/enquiries/'+sent.data.id)).status,200);
+  assert.equal((await b.request('/companies/current/enquiries/'+sent.data.id)).status,404);
+ });
  await t.test('product and public profile respect the same district coverage',async()=>{
   const r=await match({productId:product,helpMeChoose:false});assert.equal(r.status,200);assert.deepEqual(r.data.items.map(v=>v.id),[companyA]);
   assert.equal((await customer.request('/public/vendors/'+companyA)).data.quotationCoverage.verified,true);

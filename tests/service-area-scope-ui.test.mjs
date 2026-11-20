@@ -57,3 +57,18 @@ test('legacy lowercase state selections still load the correct district choices'
  changes.find(fn=>String(fn).includes('data-district-confirm'))({target:{name:'state',value:'kerala',closest:()=>row}});
  assert.match(district.innerHTML,/value="Kannur"/);assert.match(district.innerHTML,/value="Kozhikode"/);assert.equal(confirm.checked,false);
 });
+
+test('coverage save dispatches when an area id input shadows the form id property',async()=>{
+ const handlers={},document={addEventListener(type,fn){handlers[type]=fn;}};
+ const inputs=Object.entries({id:'10000000-0000-4000-8000-000000000001',scope:'district',label:'[TEST] Kannur',state:'Kerala',district:'Kannur',pin:'',locality:''}).map(([name,value])=>({name,value}));
+ const row={querySelectorAll:()=>inputs,querySelector:()=>({checked:true})};
+ // In browsers, a named control called id hides HTMLFormElement.id.
+ const form={id:inputs[0],dataset:{company:'fixture'},matches:()=>true,getAttribute:name=>name==='id'?'market-areas':null,querySelectorAll:()=>[row],isConnected:true};
+ let call,pending;const Account={activeCompany:{id:'fixture'},run:fn=>{pending=fn();},api:async(...args)=>{call=args;return {message:'[TEST] Saved'};},refresh:async()=>{},setMessage:()=>{}};
+ class FormData {constructor(){} *[Symbol.iterator](){yield ['revision','5'];}}
+ const context={window:{addEventListener(){}},document,Account,FormData,location:{hash:''},URLSearchParams,render(){}};
+ vm.runInNewContext(readFileSync(new URL('../src/marketplace.js',import.meta.url),'utf8'),context);
+ let prevented=false;handlers.submit({target:form,preventDefault(){prevented=true;}});await pending;
+ assert.equal(prevented,true);assert.equal(call[0],'/companies/current/service-areas');assert.equal(call[1],'PUT');assert.equal(call[2].revision,5);
+ assert.equal(call[2].areas[0].scope,'district');assert.equal(call[2].areas[0].confirmEntireDistrict,true);assert.equal(call[2].areas[0].pin,'');assert.equal(call[2].areas[0].locality,'');
+});

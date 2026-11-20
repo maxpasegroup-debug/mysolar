@@ -25,7 +25,7 @@ window.Account = (() => {
     finally{if(timeout)clearTimeout(timeout);}
     if(!response.ok) {
       if(response.status===401){state={...state,user:null,activeCompany:null,permissions:[]};resources.clear();}
-      if(['CSRF_REJECTED','ACCOUNT_CONTEXT_CHANGED'].includes(data.error?.code))void refresh({preserveForm:Boolean(document.querySelector('[data-onboarding-form]'))});
+      if(['CSRF_REJECTED','ACCOUNT_CONTEXT_CHANGED'].includes(data.error?.code))void refresh({preserveForm:Boolean(document.querySelector('[data-onboarding-form]')||(data.error?.code==='CSRF_REJECTED'&&document.querySelector('#market-areas')))});
       if(method!=='GET'&&businessAccount()&&['ENTITLEMENT_REQUIRED','COMPANY_NOT_ACTIVE','ACTIVATION_REQUIRED','COMPANY_REQUIRED','PLAN_LIMIT_REACHED'].includes(data.error?.code))showActivationPrompt(data.error.message||'',data.error?.code);
       const error=new Error(data.error?.message||'This request could not be completed.');error.code=data.error?.code;throw error;
     }
